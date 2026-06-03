@@ -70,7 +70,11 @@ export function FixtureCatalog({
               <div className="flex gap-4 p-6 pb-3">
                 <div className="relative w-28 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-white border border-gray-200">
                   <Image
-                    src={fixture.image}
+                    src={
+                      fixture.image.startsWith("/")
+                        ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${fixture.image}`
+                        : fixture.image
+                    }
                     alt={fixture.name}
                     fill
                     className="object-contain p-2"

@@ -1,35 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isStaticHosting, withBasePath } from "@/lib/basePath";
 
 type AiStatus = {
   activeProvider: "openai" | "yandex" | "gigachat" | null;
   imageProviderSetting: string;
-  gigachatEnvFile?: boolean;
-  gigachatConfigured?: boolean;
   gigachatModel?: string;
-  openAiKeySet: boolean;
-  yandexKeySet: boolean;
-  yandexFolderSet: boolean;
   allowLocalFallback: boolean;
   pipeline: string;
   gateLlm?: boolean;
   connection?: {
     ok: boolean;
-    code?: string;
     message: string;
     hint?: string;
-    model?: string;
   };
 };
 
-export function AiPipelineNote() {
+function StaticHostingNote() {
+  return (
+    <div className="glass rounded-xl p-4 text-sm border border-niteos-border/80 mb-6">
+      <p className="font-medium text-niteos-electric mb-2">
+        Режим GitHub Pages (демо)
+      </p>
+      <p className="text-xs text-niteos-muted">
+        Расчёт и подсветка выполняются в браузере. GigaChat, GateLLM и OpenAI
+        доступны при запуске на компьютере:{" "}
+        <code className="text-niteos-electric">npm run dev</code>
+      </p>
+    </div>
+  );
+}
+
+function AiPipelineNoteLive() {
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [probing, setProbing] = useState(false);
 
   const load = (withProbe: boolean) => {
     setProbing(withProbe);
-    fetch(withProbe ? "/api/ai-status?probe=1" : "/api/ai-status")
+    fetch(
+      withProbe
+        ? withBasePath("/api/ai-status?probe=1")
+        : withBasePath("/api/ai-status")
+    )
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => null)
@@ -70,13 +83,8 @@ export function AiPipelineNote() {
 
       <ul className="text-xs text-niteos-muted space-y-1 list-disc list-inside mb-3">
         <li>Режим: {status.imageProviderSetting}</li>
-        {status.gigachatEnvFile && (
-          <li>
-            Файл .env.gigachat: подключён · модель {status.gigachatModel}
-          </li>
-        )}
         <li>
-          Запасная подсветка на фото:{" "}
+          Запасная подсветка:{" "}
           {status.allowLocalFallback ? "включена" : "выключена"}
         </li>
       </ul>
@@ -100,4 +108,9 @@ export function AiPipelineNote() {
       <p className="text-[11px] text-niteos-muted mt-3">{status.pipeline}</p>
     </div>
   );
+}
+
+export function AiPipelineNote() {
+  if (isStaticHosting) return <StaticHostingNote />;
+  return <AiPipelineNoteLive />;
 }

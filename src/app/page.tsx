@@ -8,6 +8,9 @@ import { FixtureCatalogStage } from "@/components/FixtureCatalogStage";
 import { ResultSpecificationTable } from "@/components/ResultSpecificationTable";
 import { AiPipelineNote } from "@/components/AiPipelineNote";
 import { validateDimensions } from "@/lib/calculation";
+import { runClientAnalyze } from "@/lib/clientAnalyze";
+import { runClientVisualization } from "@/lib/clientVisualize";
+import { isStaticHosting, withBasePath } from "@/lib/basePath";
 import type {
   AnalyzeResponse,
   BuildingDimensions,
@@ -45,6 +48,7 @@ export default function HomePage() {
     | "gigachat"
     | "gigachat_photo"
     | "local_fallback"
+    | "static_demo"
     | null
   >(null);
   const [visualMessage, setVisualMessage] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export default function HomePage() {
 
   const loadKazanDemo = useCallback(async () => {
     try {
-      const res = await fetch("/samples/meriya-kazani.jpg");
+      const res = await fetch(withBasePath("/samples/meriya-kazani.jpg"));
       const blob = await res.blob();
       const file = new File([blob], "meriya-kazani.jpg", { type: blob.type });
       const { loadImageFromFile } = await import("@/lib/imageLoad");
@@ -119,7 +123,15 @@ export default function HomePage() {
       imgW: number,
       imgH: number
     ) => {
-      const visRes = await fetch("/api/visualize", {
+      if (isStaticHosting) {
+        const visData = await runClientVisualization(sourceImage, response);
+        setAfterUrl(visData.imageDataUrl);
+        setVisualMode(visData.mode);
+        setVisualMessage(visData.message);
+        return;
+      }
+
+      const visRes = await fetch(withBasePath("/api/visualize"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -166,24 +178,35 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let response: AnalyzeResponse;
+
+      if (isStaticHosting) {
+        response = runClientAnalyze({
           imageWidth: imageW,
           imageHeight: imageH,
           dimensions,
-          fixtureId: selectedFixtureId,
-          promptId: selectedPromptId,
-        }),
-      });
+          fixtureId: selectedFixtureId!,
+          promptId: selectedPromptId!,
+        });
+      } else {
+        const res = await fetch(withBasePath("/api/analyze"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageWidth: imageW,
+            imageHeight: imageH,
+            dimensions,
+            fixtureId: selectedFixtureId,
+            promptId: selectedPromptId,
+          }),
+        });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Ошибка расчёта");
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error ?? "Ошибка расчёта");
+        }
+        response = data as AnalyzeResponse;
       }
-
-      const response = data as AnalyzeResponse;
       setResult(response);
       setActiveCalculation(response.activeCalculation);
 
@@ -228,10 +251,14 @@ export default function HomePage() {
 
   const runGenerateVideo = useCallback(async () => {
     if (!imageUrl || !selectedPromptId) return;
+    if (isStaticHosting) {
+      setVideoMessage("Видео доступно только при локальном запуске (npm run dev).");
+      return;
+    }
     setVideoLoading(true);
     setVideoMessage(null);
     try {
-      const res = await fetch("/api/video", {
+      const res = await fetch(withBasePath("/api/video"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -363,7 +390,9 @@ export default function HomePage() {
                           : visualMode === "yandex_photo" ||
                               visualMode === "gigachat_photo"
                             ? "Ваше фото + подсветка"
-                            : "Запасная схема"}
+                            : visualMode === "static_demo"
+                              ? "Демо (GitHub Pages)"
+                              : "Запасная схема"}
                   </span>
                 )}
               </div>

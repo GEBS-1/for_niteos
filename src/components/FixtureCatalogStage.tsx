@@ -42,7 +42,11 @@ export function FixtureCatalogStage({
                   <div className="flex items-start gap-4">
                     <div className="relative w-24 h-24 flex-shrink-0 rounded-xl bg-white border border-gray-200">
                       <Image
-                        src={fixture.image}
+                        src={
+                          fixture.image.startsWith("/")
+                            ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${fixture.image}`
+                            : fixture.image
+                        }
                         alt={fixture.name}
                         fill
                         className="object-contain p-1"

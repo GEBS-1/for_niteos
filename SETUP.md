@@ -51,6 +51,24 @@ npm run dev:clean
 
 **Не запускайте `npm run build`**, пока открыт `npm run dev`.
 
+## GitHub Pages
+
+Сайт: [gebs-1.github.io/for_niteos](https://gebs-1.github.io/for_niteos/)
+
+GitHub Pages отдаёт **статику**, не Node.js. По умолчанию GitHub показывает **README** — не приложение.
+
+В репозитории настроен workflow **Deploy to GitHub Pages**: собирается интерфейс NITEOS (форма, фото, расчёт, демо-подсветка в браузере).
+
+В настройках репозитория: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+Полный AI (GigaChat / GateLLM) — только локально: `npm run dev`.
+
+Локальная проверка сборки под Pages:
+
+```bash
+npm run build:pages
+```
+
 ## GigaChat (Сбер)
 
 1. Создайте **`.env.gigachat`** (шаблон — `.env.gigachat.example` или комментарии в репозитории).
