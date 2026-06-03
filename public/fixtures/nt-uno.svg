@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <rect width="120" height="120" rx="12" fill="#111827"/>
+  <rect x="48" y="30" width="24" height="50" rx="6" fill="#1a2332" stroke="#00d4ff" stroke-width="2"/>
+  <ellipse cx="60" cy="28" rx="14" ry="8" fill="#00d4ff" opacity="0.35"/>
+  <circle cx="60" cy="28" r="4" fill="#00d4ff"/>
+  <text x="60" y="110" text-anchor="middle" fill="#8b9cb3" font-size="8" font-family="system-ui">NT-UNO</text>
+</svg>

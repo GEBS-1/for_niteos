@@ -1,0 +1,58 @@
+[
+  {
+    "id": "magistral-v3",
+    "name": "МАГИСТРАЛЬ v 3.0 AI 70",
+    "type": ["линейная", "контурная", "заливная"],
+    "power": 70,
+    "price": 23500,
+    "mountingStepMeters": 2,
+    "description": "Магистральный светильник для фасадного линейного монтажа на здание",
+    "image": "/fixtures/magistral.png",
+    "usagePrompts": [
+      {
+        "id": "magistral-facade-175",
+        "title": "Фасад, серия 175 Вт",
+        "lightingType": "линейная",
+        "mountTarget": "facade",
+        "description": "Крепление на фасад, горизонтальные линии",
+        "prompt": "Разместить МАГИСТРАЛЬ v 3.0 AI на фасаде здания, наружный монтаж. Серия 175 Вт. Не добавлять отдельные фонари вне фасада."
+      },
+      {
+        "id": "magistral-facade-250",
+        "title": "Фасад, серия 250 Вт",
+        "lightingType": "заливная",
+        "mountTarget": "facade",
+        "description": "Заливка фасада с креплением на здание",
+        "prompt": "МАГИСТРАЛЬ v 3.0 AI закрепить на фасаде. Серия 250 Вт. Свет на стену без изменения геометрии здания."
+      }
+    ]
+  },
+  {
+    "id": "nt-park-step",
+    "name": "NT-park STEP 145x55 740 Г-тип",
+    "type": ["акцентная", "заливная"],
+    "power": 55,
+    "price": 26500,
+    "mountingStepMeters": 8,
+    "description": "Опорный светильник рядом с фасадом, без крепления на здание",
+    "image": "/fixtures/nt-park.png",
+    "usagePrompts": [
+      {
+        "id": "nt-park-nearby-zone",
+        "title": "Рядом со зданием",
+        "lightingType": "заливная",
+        "mountTarget": "nearby",
+        "description": "Опоры в зоне перед фасадом",
+        "prompt": "Разместить NT-park STEP как фонари рядом со зданием, без крепления на фасад. Направить свет на фасад."
+      },
+      {
+        "id": "nt-park-nearby-path",
+        "title": "Вдоль подхода",
+        "lightingType": "акцентная",
+        "mountTarget": "nearby",
+        "description": "Линия опор вдоль прохода к зданию",
+        "prompt": "NT-park STEP отдельными опорами перед фасадом. Свет на архитектурные элементы."
+      }
+    ]
+  }
+]
