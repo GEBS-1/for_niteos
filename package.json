@@ -11,10 +11,18 @@
     "start": "next start",
     "lint": "next lint",
     "test:kazan": "node scripts/test-kazan.mjs",
+    "test:e2e": "node scripts/test-pipeline-e2e.mjs",
+    "test:placement": "node scripts/test-placement.mjs",
+    "import:catalog": "node scripts/import-catalog-photos.mjs",
+    "leads:links": "node scripts/generate-lead-links.mjs",
+    "export:leads": "node scripts/export-leads-csv.mjs",
     "check:api": "node scripts/check-gatellm.mjs",
     "check:gigachat": "node scripts/test-gigachat.mjs",
     "check:gigachat:visual": "node scripts/test-gigachat-visualize.mjs",
     "check:web:visual": "node scripts/test-web-visualize.mjs",
+    "sync:fixtures": "node scripts/sync-fixtures.mjs",
+    "import:magistral": "node scripts/import-magistral-assets.mjs",
+    "import:samples": "node scripts/import-demo-samples.mjs",
     "dev:gigachat": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next dev"
   },
   "dependencies": {

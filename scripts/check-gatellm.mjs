@@ -1,5 +1,5 @@
 /**
- * Проверка ключа GateLLM / OpenAI-совместимого API.
+ * Проверка ключа OpenAI / GateLLM / RouterAI.
  * Читает .env.local из корня проекта.
  */
 import fs from "fs";
@@ -28,7 +28,7 @@ function loadEnv() {
 
 const env = loadEnv();
 const key = env.OPENAI_API_KEY || env.API_KEY;
-const base = (env.OPENAI_BASE_URL || "https://gatellm.ru/v1").replace(/\/+$/, "");
+const base = (env.OPENAI_BASE_URL || "https://routerai.ru/api/v1").replace(/\/+$/, "");
 const url = base.endsWith("/v1") ? `${base}/models` : `${base}/v1/models`;
 
 if (!key) {

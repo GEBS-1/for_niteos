@@ -1,4 +1,5 @@
 import { CATALOG } from "@/lib/catalog";
+import { isParkPoleFixture } from "@/lib/fixtureMount";
 import type { BuildingDimensions, FacadeAnalysis, CalculationResult } from "../types";
 
 export interface CombinedPromptInput {
@@ -11,6 +12,34 @@ export interface CombinedPromptInput {
 
 export type PromptTarget = "openai_edit" | "yandex_generate";
 
+/**
+ * Короткий промпт только для улучшения света (без каталога, цен, размеров).
+ */
+export function buildLightOnlyPrompt(): string {
+  return [
+    "Image edit only.",
+    "Preserve the exact original building.",
+    "Do not change facade geometry.",
+    "Do not change windows.",
+    "Do not change roof.",
+    "Do not change columns.",
+    "Do not change materials.",
+    "Do not change perspective.",
+    "Do not redesign the building.",
+    "Do not add new buildings.",
+    "Do not add street lamps.",
+    "Do not add people, cars or extra objects.",
+    "Do not add fixtures.",
+    "Do not remove fixtures.",
+    "Do not move fixtures.",
+    "Only enhance realistic warm white 3000K architectural light emitted from the already placed luminaires.",
+    "Make the scene look like evening or dusk.",
+    "Add realistic glow, reflections and soft facade illumination.",
+    "Keep the original building recognizable and structurally unchanged.",
+  ].join("\n");
+}
+
+/** @deprecated Используйте buildLightOnlyPrompt для AI; полный промпт — только для отладки */
 export function buildCombinedPrompt(
   input: CombinedPromptInput,
   target: PromptTarget = "openai_edit"
@@ -47,18 +76,36 @@ export function buildCombinedPrompt(
 
   const qty = calc?.quantity ?? 0;
   const fixtureName = calc?.fixture.name ?? fixture?.name ?? "NITEOS";
+  const stepM = calc?.fixture.mountingStepMeters ?? 8;
+  const parkPole = isParkPoleFixture(fixture);
 
-  const placementRule =
-    usage.lightingType === "линейная"
-      ? `Ровно ${qty} линейных светильников «${fixtureName}» вдоль горизонтальных архитектурных поясов (линии этажей), равномерно по ширине фасада.`
-      : usage.mountTarget === "nearby"
-        ? `${qty} опорных светильников «${fixtureName}» перед фасадом, свет на здание.`
-        : `${qty} светильников «${fixtureName}» по зонам фасада.`;
+  const horizontalBands =
+    analysis?.facadeDetection?.mountLines?.filter(
+      (ml) => Math.abs(ml.x2 - ml.x1) > Math.abs(ml.y2 - ml.y1)
+    ).length ?? 0;
+
+  const placementRule = parkPole
+    ? `РОВНО ${qty} высоких опор «${fixtureName}» (NT-park STEP, ~1,45 м) на тротуаре ПЕРЕД фасадом в один ряд. Равномерный шаг ${stepM} м. Прямоугольный корпус, светящаяся головка сверху. НЕ низкие болларды и НЕ мини-фонарики.`
+    : usage.lightingType === "линейная"
+      ? `${qty} модулей «${fixtureName}» на ${horizontalBands || "4–6"} ГОРИЗОНТАЛЬНЫХ поясах по ВСЕЙ высоте фасада. Непрерывная линия тёплого света, без разрывов по окнам.`
+      : usage.lightingType === "заливная" && usage.mountTarget === "nearby"
+        ? `${qty} светильников «${fixtureName}» у основания здания / на площадке ПЕРЕД фасадом (низкий монтаж, без высоких столбов), шаг ${stepM} м. Заливка фасада и прилегающей зоны.`
+        : usage.lightingType === "заливная"
+          ? `${qty} прожекторов «${fixtureName}» по схеме — равномерная ЗАЛИВКА поверхности фасада широким пучком. Только корпуса NITEOS на отмеченных точках.`
+          : usage.lightingType === "акцентная"
+            ? `${qty} светильников «${fixtureName}» ТОЛЬКО в точках акцента на схеме (колонны, ниши, ризалиты). Узкий пучок, без сплошных линейных поясов.`
+            : usage.mountTarget === "nearby"
+              ? `${qty} опор «${fixtureName}» на тротуаре ПЕРЕД зданием (ноги на земле), шаг ${stepM} м.`
+              : `${qty} светильников «${fixtureName}» по зонам фасада.`;
 
   const taskLine =
     target === "openai_edit"
-      ? "ЗАДАЧА: отредактировать загруженное фото здания. Добавить только архитектурную подсветку вечером."
-      : "ЗАДАЧА: фотореалистичное изображение административного/общественного здания с архитектурной подсветкой вечером. Классический фасад с колоннами и окнами.";
+      ? parkPole
+        ? `ЗАДАЧА: отредактировать подготовленное фото. На площадке перед фасадом уже размечены РОВНО ${qty} опор — превратить в реалистичный вечер 3000K. Сохранить число и позиции опор.`
+        : "ЗАДАЧА: отредактировать подготовленное фото. На фасаде уже размечены линии монтажа — превратить их в реалистичный вечерний свет 3000K. Линии только НА стене здания, не в небе."
+      : parkPole
+        ? `ЗАДАЧА: фотореалистичное здание вечером с ${qty} высокими опорами NT-park STEP перед фасадом.`
+        : "ЗАДАЧА: фотореалистичное изображение административного/общественного здания с архитектурной подсветкой вечером. Классический фасад с колоннами и окнами.";
 
   return [
     taskLine,
@@ -77,11 +124,44 @@ export function buildCombinedPrompt(
     "",
     "КАТАЛОГ:",
     usage.prompt,
+    fixture?.imageApplication
+      ? "РЕФЕРЕНС ПРИМЕНЕНИЯ: итоговая картинка как на официальном фото «Применение» NITEOS — тот же характер света, плотность и равномерность."
+      : "",
+    usage.applicationStyle ?? "",
     "",
     "ТРЕБОВАНИЯ:",
-    "- Вечер/сумерки, тёплый белый свет 3000K",
-    "- Реалистичные световые линии/пятна от указанного оборудования",
-    "- Без схемы, без абстрактных точек, без посторонних фонарей",
+    "- Вечер/сумерки, реалистичная городская атмосфера, тёплый белый 3000K",
+    parkPole
+      ? `- РОВНО ${qty} высоких опор (~1,45 м) на тротуаре; свет снизу вверх на фасад; шаг ~${stepM} м`
+      : usage.lightingType === "линейная"
+        ? "- Подсветка ВСЕГО здания: горизонтальные линии от карниза до цоколя; сплошная полоса света (не пятна, не «дым»)"
+        : usage.lightingType === "заливная"
+          ? "- Равномерная заливка фасада широким пучком; мягкий свет без пересветов; только выбранная серия NITEOS"
+          : usage.lightingType === "акцентная"
+            ? "- Точечные акценты ТОЛЬКО на архитектурных деталях по схеме; между акцентами фасад темнее"
+            : usage.mountTarget === "nearby"
+              ? "- Опоры/прожекторы на земле перед фасадом по схеме"
+              : "- На фасаде видны корпуса светильников NITEOS",
+    usage.lightingType === "линейная"
+      ? `- Корпуса «${fixtureName}» видны вдоль линий; свет — ровная лента, чёткий край, мягкая заливка между поясами`
+      : "",
+    usage.lightingType === "линейная"
+      ? "- МОЖНО: включить тёплый свет у УЖЕ СУЩЕСТВУЮЩИХ уличных фонарей на фото (если они есть) — только зажечь, не добавлять новые"
+      : "",
+    parkPole
+      ? "- ЗАПРЕЩЕНО: низкие болларды, мини-фонари, другой тип опор; менять количество опор"
+      : "- ЗАПРЕЩЕНО: мелкие точечные прожекторы, V-образные uplight между колоннами, светильники на столбах/балконах, которых нет в схеме",
+    parkPole ? "" : "- ЗАПРЕЩЕНО: тонкие LED-нити без корпуса, вертикальные линии, дымчатые облака вместо линейного света",
+    parkPole || usage.mountTarget === "nearby"
+      ? ""
+      : "- ЗАПРЕЩЕНО: добавлять новые уличные фонари (кроме явно выбранных опор NT-park)",
+    "- Реалистичная заливка 3000K, профессиональная архитектурная визуализация",
+    "- Без схемы, номеров, жёлтых полос, абстрактных точек",
+    target === "openai_edit" && parkPole
+      ? `- Следовать разметке: на площадке перед фасадом РОВНО ${qty} опор; не удалять и не добавлять`
+      : target === "openai_edit"
+        ? "- Следовать разметке на фото: каждый горизонтальный пояс → одна непрерывная линия света на карнизе/межэтажье; подсветить ВСЕ пояса сверху донизу"
+        : "",
     target === "openai_edit"
       ? "- Не менять форму здания, окна, колонны и материалы фасада"
       : "- Детализированный фасад, профессиональная архитектурная съёмка",
@@ -119,8 +199,10 @@ export function buildYandexPrompt(input: CombinedPromptInput): string {
   if (dim?.widthM) dims.push(`ширина ${dim.widthM} м`);
   const dimStr = dims.length ? dims.join(", ") : "городской фасад";
 
-  const mount =
-    usage.mountTarget === "facade"
+  const parkPole = isParkPoleFixture(fixture);
+  const mount = parkPole
+    ? `высокие опоры NT-park STEP, ровно ${qty} шт.`
+    : usage.mountTarget === "facade"
       ? "светильники на фасаде"
       : "опоры перед фасадом";
 

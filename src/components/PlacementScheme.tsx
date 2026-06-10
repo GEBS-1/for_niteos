@@ -18,6 +18,7 @@ export function PlacementSchemeView({
   const viewW = 400;
   const scale = viewW / width;
   const viewH = height * scale;
+  const box = placement.facadeBox;
 
   return (
     <div className="glass rounded-2xl p-6">
@@ -30,19 +31,42 @@ export function PlacementSchemeView({
           className="block"
         >
           <image href={imageUrl} width={width} height={height} opacity={0.35} />
-          {placement.lines.map((line, i) => (
+          {box && (
+            <rect
+              x={box.x * width}
+              y={box.y * height}
+              width={box.width * width}
+              height={box.height * height}
+              fill="none"
+              stroke="rgba(255,200,120,0.5)"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+            />
+          )}
+          {(placement.lines ?? []).map((line, i) => (
             <line
               key={`l-${i}`}
               x1={line.x1}
               y1={line.y1}
               x2={line.x2}
               y2={line.y2}
-              stroke="#00d4ff"
+              stroke="#ffc878"
               strokeWidth={3}
               strokeOpacity={0.8}
             />
           ))}
-          {placement.points.map((p, i) => (
+          {placement.fixtures.map((fp, i) => (
+            <g key={`f-${i}`}>
+              <circle
+                cx={fp.x * width}
+                cy={fp.y * height}
+                r={14}
+                fill="rgba(255,200,120,0.35)"
+              />
+              <circle cx={fp.x * width} cy={fp.y * height} r={5} fill="#ffc878" />
+            </g>
+          ))}
+          {(placement.points ?? []).map((p, i) => (
             <g key={`p-${i}`}>
               <circle cx={p.x} cy={p.y} r={12} fill="rgba(0,212,255,0.3)" />
               <circle cx={p.x} cy={p.y} r={4} fill="#00d4ff" />
@@ -51,7 +75,7 @@ export function PlacementSchemeView({
         </svg>
       </div>
       <p className="text-xs text-niteos-muted mt-3 text-center">
-        Точки и линии — расчётные позиции светильников из каталога NITEOS
+        {placement.fixtures.length} светильников · координаты 0–1 · расчёт в коде
       </p>
     </div>
   );

@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { buildCombinedPrompt, type CombinedPromptInput } from "./buildCombinedPrompt";
+import { buildLightOnlyPrompt } from "./buildCombinedPrompt";
 import {
   getGigachatApiUrl,
   getGigachatClientId,
@@ -220,12 +220,18 @@ async function chatCompletions(body: Record<string, unknown>): Promise<{
 }
 
 /**
- * Визуализация: загрузка фото → chat с attachments + text2image (function_call auto).
+ * Улучшение света на локально подготовленном изображении (светильники уже на фото).
  */
+export async function enhanceLightWithGigaChat(
+  localImageBuffer: Buffer
+): Promise<{ imageDataUrl: string; promptUsed: string; modelUsed: string }> {
+  return generateImageWithGigaChat(localImageBuffer, "image/jpeg");
+}
+
 export async function generateImageWithGigaChat(
   imageBuffer: Buffer,
   mime: string,
-  input: CombinedPromptInput
+  customPrompt?: string
 ): Promise<{ imageDataUrl: string; promptUsed: string; modelUsed: string }> {
   httpsAgent();
 
@@ -233,16 +239,10 @@ export async function generateImageWithGigaChat(
   const fileId = await uploadGigaChatImage(
     imageBuffer,
     mime,
-    `facade.${ext}`
+    `facade-prepared.${ext}`
   );
 
-  const prompt = buildCombinedPrompt(input, "openai_edit");
-  const userPrompt = [
-    prompt,
-    "",
-    "По приложенному фото здания: создай изображение ТОГО ЖЕ здания вечером с архитектурной подсветкой NITEOS.",
-    "Сохрани форму фасада, окна и пропорции. Используй функцию генерации изображения.",
-  ].join("\n");
+  const userPrompt = customPrompt ?? buildLightOnlyPrompt();
 
   const model = getGigachatModel();
   const messages: ChatMessage[] = [
@@ -268,7 +268,7 @@ export async function generateImageWithGigaChat(
       messages: [
         {
           role: "user",
-          content: `Нарисуй фотореалистичное здание с вечерней архитектурной подсветкой. ${userPrompt.slice(0, 1500)}`,
+          content: userPrompt,
         },
       ],
       function_call: "auto",

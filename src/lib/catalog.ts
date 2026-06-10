@@ -3,6 +3,15 @@ import type { Fixture, LightingType } from "./types";
 
 export const CATALOG: Fixture[] = catalogData as Fixture[];
 
+export function getCatalogSeries(): string[] {
+  const series = new Set(CATALOG.map((f) => f.series).filter(Boolean) as string[]);
+  return [...series].sort();
+}
+
+export function getFixturesBySeries(series: string): Fixture[] {
+  return CATALOG.filter((f) => f.series === series);
+}
+
 export const LIGHTING_OPTIONS: { value: LightingType; label: string }[] = [
   { value: "контурная", label: "Контурная подсветка" },
   { value: "акцентная", label: "Акцентная подсветка" },

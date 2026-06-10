@@ -1,0 +1,91 @@
+[
+  {
+    "fixtureId": "magistral-v3-ai-70",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-SLIM/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-slim",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-SLIM/Линейный светодиодный светильник NT-SLIM.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-SLIM/Линейный светодиодный светильник NT-SLIM.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-SLIM/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-rainbow-24",
+    "files": [
+      {
+        "src": "catalog/СЕРИЯ NT-RAINBOW/Архитектурный светодиодный светильник NT-RAINBOW.webp",
+        "dest": "front.png"
+      },
+      {
+        "src": "catalog/СЕРИЯ NT-RAINBOW/Архитектурный светодиодный светильник NT-RAINBOW.webp",
+        "dest": "side.png"
+      },
+      { "src": "catalog/СЕРИЯ NT-RAINBOW/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "x-ray",
+    "files": [
+      { "src": "catalog/Архитектурная серия X-Ray/X-Ray.webp", "dest": "front.png" },
+      { "src": "catalog/Архитектурная серия X-Ray/X-Ray.webp", "dest": "side.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-horizon",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-HORIZON/Архитектурный светодиодный светильник NT-HORIZON.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-HORIZON/AVKA_HORIZON_для каталога.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-HORIZON/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-contour",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-CONTOUR/Архитектурный светодиодный светильник NT-CONTOUR.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-CONTOUR/Архитектурный светодиодный светильник NT-CONTOUR.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-CONTOUR/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-slim-contour-mini",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-SLIM MINI/NT-SLIM CONTOUR MINI.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-SLIM MINI/NT-SLIM CONTOUR MINI.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-SLIM MINI/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-uno",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-UNO/Акцентный светодиодный светильник NT-UNO.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-UNO/Акцентный светодиодный светильник NT-UNO.webp", "dest": "side.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-uno-line",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-UNO LINE/Акцентный светодиодный светильник NT-UNO LINE.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-UNO LINE/Акцентный светодиодный светильник NT-UNO LINE.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-UNO LINE/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-liga-window",
+    "files": [
+      { "src": "catalog/СЕРИЯ NT-LIGA WINDOW/Светодиодный светильник NT-LIGA WINDOW.webp", "dest": "front.png" },
+      { "src": "catalog/СЕРИЯ NT-LIGA WINDOW/Светодиодный светильник NT-LIGA WINDOW.webp", "dest": "side.png" },
+      { "src": "catalog/СЕРИЯ NT-LIGA WINDOW/Применение.webp", "dest": "application.png" }
+    ]
+  },
+  {
+    "fixtureId": "nt-lace",
+    "files": [
+      { "src": "catalog/ГИБКИЕ АРХИТЕКТУРНЫЕ СВЕТИЛЬНИКИ NT-LACE/NT-LACE.webp", "dest": "front.png" },
+      { "src": "catalog/ГИБКИЕ АРХИТЕКТУРНЫЕ СВЕТИЛЬНИКИ NT-LACE/NT-LACE.webp", "dest": "side.png" }
+    ]
+  }
+]

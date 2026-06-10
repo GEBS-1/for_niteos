@@ -2,115 +2,107 @@
 
 import Image from "next/image";
 import { CATALOG } from "@/lib/catalog";
+import { withBasePath } from "@/lib/basePath";
 import type { UsagePrompt } from "@/lib/types";
 
+/** Первый (основной) вариант применения для каждого светильника */
+export const DEFAULT_PROMPT_BY_FIXTURE: Record<string, string> = {
+  "magistral-v3-ai-70": "magistral-facade-175",
+  "nt-park-step": "nt-park-nearby-zone",
+  "nt-slim": "nt-slim-linear-facade",
+  "nt-rainbow-24": "rainbow-facade-wash",
+  "x-ray": "xray-facade",
+  "nt-horizon": "nt-horizon-facade",
+  "nt-contour": "nt-contour-building",
+  "nt-slim-contour-mini": "nt-slim-mini-contour",
+  "nt-uno": "nt-uno-accent",
+  "nt-uno-line": "nt-uno-line-accent",
+  "nt-liga-window": "nt-liga-window-reveal",
+  "nt-lace": "nt-lace-contour",
+};
+
+function defaultPromptFor(fixtureId: string) {
+  const fixture = CATALOG.find((f) => f.id === fixtureId);
+  if (!fixture) return null;
+  const pid = DEFAULT_PROMPT_BY_FIXTURE[fixtureId];
+  return fixture.usagePrompts.find((p) => p.id === pid) ?? fixture.usagePrompts[0];
+}
+
 interface FixtureCatalogStageProps {
-  selectedPromptId: string | null;
   selectedFixtureId: string | null;
   onSelect: (prompt: UsagePrompt, fixtureId: string) => void;
 }
 
 export function FixtureCatalogStage({
-  selectedPromptId,
   selectedFixtureId,
   onSelect,
 }: FixtureCatalogStageProps) {
-  const mountLabel = (p: UsagePrompt) =>
-    p.mountTarget === "facade" ? "На фасаде" : "Рядом со зданием";
-
   return (
-    <section className="glass rounded-2xl p-6">
+    <section className="glass rounded-2xl p-5 sm:p-6">
       <h3 className="text-lg font-semibold mb-1">Каталог светильников</h3>
-      <p className="text-sm text-niteos-muted mb-5">
-        Выберите светильник и вариант установки. Листайте карточки горизонтально.
+      <p className="text-sm text-niteos-muted mb-4">
+        {CATALOG.length} позиций — листайте и нажмите «Выбрать».
       </p>
 
-      <div className="overflow-x-auto pb-3 -mx-1 px-1">
-        <div className="flex gap-5 w-max snap-x snap-mandatory">
+      <div className="overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
+        <div className="flex gap-4 w-max">
           {CATALOG.map((fixture) => {
-            const fixtureSelected = selectedFixtureId === fixture.id;
+            const selected = selectedFixtureId === fixture.id;
+            const prompt = defaultPromptFor(fixture.id);
+            const imageSrc = `${withBasePath(fixture.image)}?v=12`;
+
             return (
               <article
                 key={fixture.id}
-                className={`snap-start w-[300px] sm:w-[340px] rounded-[24px] border-2 overflow-hidden bg-[#f4f5f7] text-[#0f1118] transition-all ${
-                  fixtureSelected
-                    ? "border-[#0059b8] shadow-lg shadow-[#0059b8]/20"
-                    : "border-transparent"
+                className={`snap-start w-[260px] sm:w-[300px] flex-shrink-0 rounded-2xl border-2 overflow-hidden flex flex-col bg-niteos-surface/60 transition-all ${
+                  selected
+                    ? "border-niteos-electric shadow-lg shadow-niteos-electric/15"
+                    : "border-niteos-border"
                 }`}
               >
-                <div className="p-5 pb-3">
-                  <div className="flex items-start gap-4">
-                    <div className="relative w-24 h-24 flex-shrink-0 rounded-xl bg-white border border-gray-200">
-                      <Image
-                        src={
-                          fixture.image.startsWith("/")
-                            ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${fixture.image}`
-                            : fixture.image
-                        }
-                        alt={fixture.name}
-                        fill
-                        className="object-contain p-1"
-                        sizes="96px"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-semibold text-[#0059b8] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#0059b8]" />
-                        В наличии
-                      </p>
-                      <h4 className="font-bold text-xl leading-tight mt-1 line-clamp-2">
-                        {fixture.name}
-                      </h4>
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {fixture.description}
-                      </p>
-                    </div>
-                  </div>
+                <div className="relative h-[200px] sm:h-[220px] bg-[#0a0f18]">
+                  <Image
+                    src={imageSrc}
+                    alt={fixture.name}
+                    fill
+                    className="object-contain p-3"
+                    sizes="300px"
+                    unoptimized
+                  />
                 </div>
 
-                <div className="px-5 pb-5 space-y-2">
-                  {fixture.usagePrompts.map((prompt) => {
-                    const selected = selectedPromptId === prompt.id;
-                    return (
-                      <button
-                        key={prompt.id}
-                        type="button"
-                        onClick={() => onSelect(prompt, fixture.id)}
-                        className={`w-full text-left p-3 rounded-xl border text-sm transition-all ${
-                          selected
-                            ? "border-[#0059b8] bg-[#e8f2ff] ring-2 ring-[#0059b8]/30"
-                            : "border-gray-200 bg-white hover:border-[#0059b8]/50"
-                        }`}
-                      >
-                        <span className="font-semibold text-[#101321]">{prompt.title}</span>
-                        <span className="block text-xs text-gray-500 mt-0.5">
-                          {prompt.description}
-                        </span>
-                        <span className="block text-[11px] font-medium text-[#0059b8] mt-1">
-                          {mountLabel(prompt)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="p-4 flex flex-col flex-1 gap-2">
+                  {fixture.series && (
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-niteos-electric/90">
+                      {fixture.series}
+                    </span>
+                  )}
+                  <h4 className="font-semibold text-sm sm:text-base leading-snug line-clamp-2">
+                    {fixture.name}
+                  </h4>
+                  {fixture.description && (
+                    <p className="text-xs text-niteos-muted line-clamp-2 leading-relaxed">
+                      {fixture.description}
+                    </p>
+                  )}
 
-                <div className="px-5 pb-4 flex items-center justify-between text-xs text-gray-400 border-t border-gray-200/80 pt-3 mx-5">
-                  <span>Подробнее</span>
-                  <span className="w-8 h-8 rounded-full bg-[#0f1118] text-white flex items-center justify-center text-sm">
-                    →
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => prompt && onSelect(prompt, fixture.id)}
+                    className={`mt-auto w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                      selected
+                        ? "bg-niteos-electric/20 text-niteos-electric border border-niteos-electric"
+                        : "bg-niteos-bg border border-niteos-border text-white hover:border-niteos-electric hover:text-niteos-electric"
+                    }`}
+                  >
+                    {selected ? "Выбрано" : "Выбрать"}
+                  </button>
                 </div>
               </article>
             );
           })}
         </div>
       </div>
-
-      {!selectedPromptId && (
-        <p className="text-sm text-amber-400/90 mt-3">
-          Выберите вариант в карточке светильника, чтобы перейти к расчёту.
-        </p>
-      )}
     </section>
   );
 }

@@ -1,10 +1,12 @@
 # Запуск за 2 минуты
 
-## 1. Ключ GateLLM
+## 1. Ключ RouterAI (или GateLLM)
 
 1. Откройте файл **`.env.local`** в корне проекта.
 2. Вставьте ключ в строку **`OPENAI_API_KEY=`** (после `=`).
-3. Остальное уже настроено: `OPENAI_BASE_URL=https://gatellm.ru/v1`, провайдер `openai`.
+3. Для [RouterAI](https://routerai.ru): `OPENAI_BASE_URL=https://routerai.ru/api/v1`
+4. Альтернатива GateLLM: `OPENAI_BASE_URL=https://gatellm.ru/v1`
+5. Провайдер: `AI_IMAGE_PROVIDER=openai`
 
 ## 2. Запуск
 
@@ -28,14 +30,14 @@ npm run dev
 | Сообщение | Действие |
 |-----------|----------|
 | 401 | Неверный ключ в `OPENAI_API_KEY` |
-| 402 | Пополните баланс на gatellm.ru |
+| 402 | Пополните баланс на routerai.ru или gatellm.ru |
 | 400 model | В `.env.local` задайте `OPENAI_IMAGE_MODEL` из списка `GET /v1/models` |
-| 404 images.edit | Нормально для GateLLM — используется `chat/completions` + ваше фото (1–2 мин) |
+| 404 images.edit | Нормально для RouterAI/GateLLM — используется `chat/completions` + ваше фото (1–2 мин) |
 
-Проверка ключа вручную:
+Проверка ключа:
 
 ```bash
-curl https://gatellm.ru/v1/models -H "Authorization: Bearer ВАШ_КЛЮЧ"
+npm run check:api
 ```
 
 ## Ошибки `Cannot find module './331.js'` или `SegmentViewNode`

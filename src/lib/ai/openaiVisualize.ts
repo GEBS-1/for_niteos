@@ -12,12 +12,18 @@ import {
 
   getOpenAiImageModel,
 
-  isGateLlmConfigured,
+  getOpenAiProxyBillingHint,
+  getOpenAiProxyLabel,
   isProxyConfigured,
+  usesChatCompletionsForImages,
 } from "@/config/ai.config";
 
-import { buildCombinedPrompt, type CombinedPromptInput } from "./buildCombinedPrompt";
-import { generateImageViaGateLLMChat } from "./gateLlmVisualize";
+import {
+  buildCombinedPrompt,
+  buildLightOnlyPrompt,
+  type CombinedPromptInput,
+} from "./buildCombinedPrompt";
+import { generateImageViaOpenAiProxyChat } from "./gateLlmVisualize";
 
 import sharp from "sharp";
 
@@ -39,6 +45,8 @@ function dataUrlToBuffer(dataUrl: string): Buffer {
 
 
 
+const AI_ENHANCE_MAX_SIDE = 1536;
+
 async function prepareImageForOpenAI(buffer: Buffer): Promise<{
 
   file: Awaited<ReturnType<typeof toFile>>;
@@ -47,7 +55,7 @@ async function prepareImageForOpenAI(buffer: Buffer): Promise<{
 
   const resized = await sharp(buffer)
 
-    .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+    .resize(AI_ENHANCE_MAX_SIDE, AI_ENHANCE_MAX_SIDE, { fit: "inside", withoutEnlargement: true })
 
     .png()
 
@@ -255,8 +263,8 @@ export function parseOpenAiError(error: unknown): ParsedError {
       message: httpStatus === 402 ? "Недостаточно средств на балансе (402)" : "Недостаточно квоты API.",
 
       hint: isProxyConfigured()
-        ? "Пополните баланс на gatellm.ru (личный кабинет)."
-        : "Проверьте баланс OpenAI или GateLLM.",
+        ? getOpenAiProxyBillingHint()
+        : "Проверьте баланс OpenAI.",
 
       httpStatus,
 
@@ -292,10 +300,10 @@ export function parseOpenAiError(error: unknown): ParsedError {
 
 
 
-  if (httpStatus === 404 && isGateLlmConfigured()) {
+  if (httpStatus === 404 && usesChatCompletionsForImages()) {
     return {
       code: "endpoint_not_found",
-      message: "GateLLM не поддерживает images.edit (404).",
+      message: `${getOpenAiProxyLabel()} не поддерживает images.edit (404).`,
       hint: "Должен использоваться chat/completions — перезапустите dev-сервер.",
       httpStatus,
     };
@@ -309,8 +317,8 @@ export function parseOpenAiError(error: unknown): ParsedError {
 
       message: "Превышено время ожидания ответа OpenAI.",
 
-      hint: isGateLlmConfigured()
-        ? "GateLLM chat может занять 1–2 минуты. Увеличьте OPENAI_TIMEOUT_MS=180000."
+      hint: usesChatCompletionsForImages()
+        ? `${getOpenAiProxyLabel()} chat может занять 1–2 минуты. Увеличьте OPENAI_TIMEOUT_MS=180000.`
         : "Попробуйте снова или уменьшите размер фото.",
 
       httpStatus,
@@ -373,7 +381,7 @@ export function buildLightingPrompt(input: CombinedPromptInput): string {
 
 
 
-class OpenAiImageError extends Error {
+export class OpenAiImageError extends Error {
 
   constructor(
 
@@ -399,34 +407,31 @@ class OpenAiImageError extends Error {
 
  */
 
-export async function generateImageWithOpenAI(
-
-  imageDataUrl: string,
-
-  input: CombinedPromptInput
-
+/** AI только улучшает свет на уже подготовленной локальной картинке */
+export async function enhanceLightWithOpenAI(
+  localImageDataUrl: string,
+  localBuffer: Buffer
 ): Promise<{ imageDataUrl: string; promptUsed: string }> {
-
   const openai = createOpenAIClient();
+  const prompt = truncatePrompt(buildLightOnlyPrompt());
 
-  const buffer = dataUrlToBuffer(imageDataUrl);
-
-  const prompt = truncatePrompt(buildCombinedPrompt(input, "openai_edit"));
-
-  if (isGateLlmConfigured()) {
-    const jpeg = await sharp(buffer)
-      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+  if (usesChatCompletionsForImages()) {
+    const jpeg = await sharp(localBuffer)
+      .resize(AI_ENHANCE_MAX_SIDE, AI_ENHANCE_MAX_SIDE, {
+        fit: "inside",
+        withoutEnlargement: true,
+      })
       .jpeg({ quality: 88 })
       .toBuffer();
     const optimizedUrl = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
-    const result = await generateImageViaGateLLMChat(openai, optimizedUrl, prompt);
+    const result = await generateImageViaOpenAiProxyChat(openai, optimizedUrl, prompt);
     return {
       imageDataUrl: result.imageDataUrl,
-      promptUsed: result.promptUsed,
+      promptUsed: prompt,
     };
   }
 
-  const { file } = await prepareImageForOpenAI(buffer);
+  const { file } = await prepareImageForOpenAI(localBuffer);
 
   const primaryModel = getOpenAiImageModel();
   const models = [
@@ -447,7 +452,7 @@ export async function generateImageWithOpenAI(
         model,
         image: file,
         prompt,
-        size: "1024x1024",
+        size: "auto",
       });
 
       const b64 = result.data?.[0]?.b64_json;
@@ -487,10 +492,82 @@ export async function generateImageWithOpenAI(
   };
 
   throw new OpenAiImageError(best, attempts);
-
 }
 
+/** Редактирование фото: полный промпт (светильник, кол-во, вечер, видимые корпуса) */
+export async function generateImageWithOpenAI(
+  imageDataUrl: string,
+  input: CombinedPromptInput
+): Promise<{ imageDataUrl: string; promptUsed: string }> {
+  const buffer = dataUrlToBuffer(imageDataUrl);
+  const openai = createOpenAIClient();
+  const prompt = truncatePrompt(buildCombinedPrompt(input, "openai_edit"));
 
+  if (usesChatCompletionsForImages()) {
+    const jpeg = await sharp(buffer)
+      .resize(AI_ENHANCE_MAX_SIDE, AI_ENHANCE_MAX_SIDE, {
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 88 })
+      .toBuffer();
+    const optimizedUrl = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    const result = await generateImageViaOpenAiProxyChat(openai, optimizedUrl, prompt);
+    return {
+      imageDataUrl: result.imageDataUrl,
+      promptUsed: prompt,
+    };
+  }
+
+  const { file } = await prepareImageForOpenAI(buffer);
+  const primaryModel = getOpenAiImageModel();
+  const models = [
+    ...new Set([
+      primaryModel,
+      "openai/gpt-5-image",
+      "openai/gpt-5.4-image-2",
+      "gpt-image-1",
+      "openai/gpt-image-1",
+    ]),
+  ];
+
+  const attempts: ParsedError[] = [];
+  for (const model of models) {
+    try {
+      const result = await openai.images.edit({
+        model,
+        image: file,
+        prompt,
+        size: "auto",
+      });
+      const b64 = result.data?.[0]?.b64_json;
+      if (b64) {
+        return {
+          imageDataUrl: `data:image/png;base64,${b64}`,
+          promptUsed: prompt,
+        };
+      }
+      attempts.push({
+        code: "empty_response",
+        message: `Модель ${model}: пустой ответ`,
+        hint: "Проверьте OPENAI_IMAGE_MODEL в .env.local",
+      });
+    } catch (e) {
+      const parsed = parseOpenAiError(e);
+      attempts.push(parsed);
+      if (isNonRetryableError(parsed.code, parsed.message, parsed.httpStatus)) {
+        throw new OpenAiImageError(parsed, attempts);
+      }
+    }
+  }
+
+  const best = attempts[0] ?? {
+    code: "unknown",
+    message: "OpenAI не вернул изображение",
+    hint: "",
+  };
+  throw new OpenAiImageError(best, attempts);
+}
 
 /** Проверка подключения к API (без генерации изображения) */
 
@@ -650,8 +727,5 @@ export async function generateVideoWithOpenAI(
 
 }
 
-
-
-export { OpenAiImageError };
 
 

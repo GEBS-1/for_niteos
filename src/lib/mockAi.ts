@@ -27,7 +27,7 @@ export function renderLightingOverlay(
       ctx.save();
       ctx.globalCompositeOperation = "screen";
 
-      for (const line of placement.lines) {
+      for (const line of placement.lines ?? []) {
         ctx.beginPath();
         ctx.moveTo(line.x1, line.y1);
         ctx.lineTo(line.x2, line.y2);
@@ -42,7 +42,25 @@ export function renderLightingOverlay(
         ctx.stroke();
       }
 
-      for (const p of placement.points) {
+      for (const fp of placement.fixtures ?? []) {
+        const px = fp.x * img.width;
+        const py = fp.y * img.height;
+        const glowR = pointRadius * 4 * ((fp.scale ?? 0.1) / 0.1);
+        const gradient = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+        gradient.addColorStop(0, "rgba(255, 200, 120, 0.95)");
+        gradient.addColorStop(0.4, "rgba(255, 160, 60, 0.4)");
+        gradient.addColorStop(1, "rgba(255, 120, 40, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(px, py, glowR, 0, Math.PI * 2);
+        ctx.fill();
+        const hw = pointRadius * 1.2 * (fp.scale ?? 0.1);
+        const hh = pointRadius * 0.4 * (fp.scale ?? 0.1);
+        ctx.fillStyle = "rgba(255, 230, 180, 0.9)";
+        ctx.fillRect(px - hw, py - hh, hw * 2, hh * 2);
+      }
+
+      for (const p of placement.points ?? []) {
         const glowR = pointRadius * 4;
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowR);
         gradient.addColorStop(0, "rgba(100, 255, 255, 1)");
@@ -79,7 +97,7 @@ export function renderLightingOverlay(
       ctx.strokeStyle = "rgba(0,0,0,0.6)";
       ctx.lineWidth = 3 * scale;
       ctx.fillStyle = "#00ffff";
-      for (const z of placement.zoneLabels) {
+      for (const z of placement.zoneLabels ?? []) {
         ctx.strokeText(z.label, z.x, z.y);
         ctx.fillText(z.label, z.x, z.y);
       }

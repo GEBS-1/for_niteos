@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFullAnalyzeResult, validateDimensions } from "@/lib/calculation";
+import { validateDimensions } from "@/lib/calculation";
+import { runAnalyzePipelineAsync } from "@/lib/analyzePipeline.server";
 import type { AnalyzeRequest } from "@/lib/types";
+
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: dimError }, { status: 400 });
     }
 
-    const result = buildFullAnalyzeResult(body);
+    const result = await runAnalyzePipelineAsync(body);
 
     return NextResponse.json(result);
   } catch (e) {

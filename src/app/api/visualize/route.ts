@@ -1,40 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-
-  isAiConfigured,
-
-  shouldAllowLocalFallback,
-
-  shouldUseLocalRenderer,
-
-} from "@/config/ai.config";
-
-import { buildCombinedPrompt } from "@/lib/ai/buildCombinedPrompt";
-
-import type { CombinedPromptInput } from "@/lib/ai/buildCombinedPrompt";
+import { CATALOG } from "@/lib/catalog";
 
 import {
-
-  generateVisualization,
 
   parseVisualizationError,
 
+  runVisualizationPipeline,
+
 } from "@/lib/ai/visualizeImage";
 
-import { OpenAiImageError } from "@/lib/ai/openaiVisualize";
+import { PipelineLogger } from "@/lib/pipelineLog";
 
-import { YandexArtError } from "@/lib/ai/yandexArt";
-
-import {
-
-  dataUrlToBuffer,
-
-  renderLocalVisualization,
-
-} from "@/lib/visualizeLocal";
-
-import { CATALOG } from "@/lib/catalog";
+import { dataUrlToBuffer } from "@/lib/visualizeLocal";
 
 import type {
 
@@ -43,10 +21,6 @@ import type {
   CalculationResult,
 
   FacadeAnalysis,
-
-  LightingType,
-
-  MountTarget,
 
   PlacementScheme,
 
@@ -58,7 +32,7 @@ export const maxDuration = 300;
 
 
 
-interface VisualizeBody extends CombinedPromptInput {
+interface VisualizeBody {
 
   imageDataUrl: string;
 
@@ -66,41 +40,19 @@ interface VisualizeBody extends CombinedPromptInput {
 
   imageHeight?: number;
 
-  lightingType?: LightingType;
+  promptId: string;
 
-  placement?: PlacementScheme;
+  fixtureId?: string;
+
+  dimensions?: BuildingDimensions;
 
   analysis?: FacadeAnalysis;
 
   calculation?: CalculationResult;
 
-  dimensions?: BuildingDimensions;
+  placement?: PlacementScheme;
 
-}
-
-
-
-function resolveMountTarget(
-
-  promptId: string,
-
-  fixtureId?: string
-
-): MountTarget {
-
-  const fixture = fixtureId
-
-    ? CATALOG.find((f) => f.id === fixtureId)
-
-    : undefined;
-
-  const prompt =
-
-    fixture?.usagePrompts.find((p) => p.id === promptId) ??
-
-    CATALOG.flatMap((f) => f.usagePrompts).find((p) => p.id === promptId);
-
-  return prompt?.mountTarget ?? "facade";
+  provider?: "openai" | "gigachat";
 
 }
 
@@ -128,19 +80,15 @@ export async function POST(request: NextRequest) {
 
 
 
-    if (!isAiConfigured()) {
+    if (!body.calculation || !body.placement) {
 
       return NextResponse.json(
 
         {
 
-          error: "Не настроен AI-провайдер",
+          error: "Сначала выполните расчёт (/api/analyze)",
 
-          code: "no_provider",
-
-          hint:
-
-            "Настройте .env.gigachat, или YANDEX_API_KEY, или OPENAI_API_KEY в .env.local",
+          code: "no_calculation",
 
         },
 
@@ -152,185 +100,89 @@ export async function POST(request: NextRequest) {
 
 
 
-    const promptInput: CombinedPromptInput = {
+    const fixture =
 
-      promptId: body.promptId,
+      body.calculation.fixture ??
 
-      fixtureId: body.fixtureId,
+      CATALOG.find((f) => f.id === body.fixtureId);
 
-      dimensions: body.dimensions,
+    if (!fixture) {
 
-      analysis: body.analysis,
+      return NextResponse.json(
 
-      calculation: body.calculation,
+        { error: "Товар не найден в каталоге" },
 
-    };
+        { status: 400 }
 
-
-
-    const combinedPrompt = buildCombinedPrompt(promptInput, "openai_edit");
-
-
-
-    if (shouldUseLocalRenderer()) {
-
-      if (!shouldAllowLocalFallback()) {
-
-        return NextResponse.json(
-
-          {
-
-            error: "Включён режим только локального рендера (USE_LOCAL_RENDERER_ONLY).",
-
-            code: "local_only",
-
-            combinedPrompt,
-
-          },
-
-          { status: 400 }
-
-        );
-
-      }
-
-    } else {
-
-      try {
-
-        const buffer = dataUrlToBuffer(body.imageDataUrl);
-
-        const placement = body.placement ?? {
-
-          points: [],
-
-          lines: [],
-
-          zoneLabels: [],
-
-        };
-
-        const lightingType = body.lightingType ?? "линейная";
-
-        const mountTarget = resolveMountTarget(body.promptId, body.fixtureId);
-
-
-
-        const result = await generateVisualization({
-
-          imageDataUrl: body.imageDataUrl,
-
-          imageBuffer: buffer,
-
-          input: promptInput,
-
-          placement,
-
-          lightingType,
-
-          mountTarget,
-
-          imageWidth: body.imageWidth,
-
-          imageHeight: body.imageHeight,
-
-        });
-
-
-
-        return NextResponse.json({
-
-          mode: result.mode,
-
-          provider: result.provider,
-
-          imageDataUrl: result.imageDataUrl,
-
-          combinedPrompt: result.promptUsed,
-
-          message: result.userMessage,
-
-        });
-
-      } catch (aiError) {
-
-        const parsed = parseVisualizationError(aiError);
-
-        console.error("Visualization failed:", aiError);
-
-
-
-        if (!shouldAllowLocalFallback()) {
-
-          return NextResponse.json(
-
-            {
-
-              error: parsed.message,
-
-              code: parsed.code,
-
-              hint: parsed.hint,
-
-              combinedPrompt,
-
-              attempts:
-
-                aiError instanceof OpenAiImageError
-
-                  ? aiError.attempts.map((a) => a.code)
-
-                  : undefined,
-
-            },
-
-            { status: 502 }
-
-          );
-
-        }
-
-
-
-        console.warn("ALLOW_LOCAL_FALLBACK=true, using local renderer");
-
-      }
+      );
 
     }
 
 
 
-    const placement = body.placement ?? { points: [], lines: [], zoneLabels: [] };
-
-    const lightingType = body.lightingType ?? "линейная";
-
-    const mountTarget = resolveMountTarget(body.promptId, body.fixtureId);
-
     const buffer = dataUrlToBuffer(body.imageDataUrl);
 
-    const imageDataUrl = await renderLocalVisualization(
+    const logger = new PipelineLogger();
 
-      buffer,
+    logger.log("api", "POST /api/visualize", {
 
-      placement,
+      fixtureId: fixture.id,
 
-      lightingType,
+      placementCount: body.placement.fixtures?.length ?? 0,
 
-      mountTarget
+      provider: body.provider,
 
-    );
+    });
+
+
+
+    const result = await runVisualizationPipeline({
+
+      imageDataUrl: body.imageDataUrl,
+
+      imageBuffer: buffer,
+
+      placement: body.placement,
+
+      fixture,
+
+      specification: body.calculation,
+
+      promptId: body.promptId,
+
+      dimensions: body.dimensions,
+
+      analysis: body.analysis,
+
+      provider: body.provider ?? null,
+
+      logger,
+
+    });
+
+
+
+    const primaryImage =
+
+      result.aiVisualization ?? result.localVisualization;
 
 
 
     return NextResponse.json({
 
-      mode: "local_fallback" as const,
+      ...result,
 
-      imageDataUrl,
+      imageDataUrl: primaryImage,
 
-      combinedPrompt,
+      combinedPrompt: result.lightPrompt,
 
-      message: "Запасной режим: схема подсветки на фото.",
+      mode: result.mode,
+
+      message: result.message,
+
+      localRenderReport: result.localRenderReport,
+
+      pipelineLog: result.pipelineLog,
 
     });
 
@@ -338,16 +190,25 @@ export async function POST(request: NextRequest) {
 
     console.error("visualize error:", e);
 
+    const parsed = parseVisualizationError(e);
+
     return NextResponse.json(
 
-      { error: e instanceof Error ? e.message : "Ошибка визуализации" },
+      {
 
-      { status: 500 }
+        error: parsed.message,
+
+        code: parsed.code,
+
+        hint: parsed.hint,
+
+      },
+
+      { status: 502 }
 
     );
 
   }
 
 }
-
 

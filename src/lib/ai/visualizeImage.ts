@@ -1,188 +1,196 @@
 import {
+  type ActiveImageProvider,
   getYandexFolderId,
-  isGateLlmConfigured,
+  isAiConfigured,
+  getOpenAiProxyLabel,
+  usesChatCompletionsForImages,
   resolveImageProvider,
   shouldAllowLocalFallback,
   shouldYandexKeepOriginalPhoto,
 } from "@/config/ai.config";
+import { PREP_FOR_AI_DISPLAY_OPTIONS } from "@/lib/displayOptions";
+import { PipelineLogger } from "@/lib/pipelineLog";
+import { renderLocalVisualization, dataUrlToBuffer } from "@/lib/visualizeLocal";
+import type {
+  BuildingDimensions,
+  CalculationResult,
+  FacadeAnalysis,
+  Fixture,
+  PlacementScheme,
+  VisualizationResponse,
+} from "@/lib/types";
+import {
+  buildCombinedPrompt,
+  type CombinedPromptInput,
+} from "./buildCombinedPrompt";
 import {
   generateImageWithGigaChat,
   GigaChatError,
 } from "./gigachatVisualize";
-import { buildYandexPrompt, type CombinedPromptInput } from "./buildCombinedPrompt";
 import {
   generateImageWithOpenAI,
   OpenAiImageError,
   parseOpenAiError,
 } from "./openaiVisualize";
-import {
-  generateImageWithYandex,
-  YandexArtError,
-  parseYandexError,
-} from "./yandexArt";
-import { renderLocalVisualization } from "@/lib/visualizeLocal";
-import type { LightingType, MountTarget, PlacementScheme } from "@/lib/types";
-import sharp from "sharp";
+import { YandexArtError, parseYandexError } from "./yandexArt";
 
 export type VisualizeMode =
+  | "local"
   | "openai"
-  | "yandex"
-  | "yandex_photo"
   | "gigachat"
-  | "gigachat_photo"
-  | "local_fallback";
+  | "yandex_photo"
+  | "static_demo";
 
-export interface VisualizeImageResult {
-  imageDataUrl: string;
-  promptUsed: string;
-  mode: VisualizeMode;
-  provider: "openai" | "yandex" | "gigachat";
-  userMessage?: string;
-}
-
-export interface VisualizeImageOptions {
+export interface VisualizePipelineOptions {
   imageDataUrl: string;
   imageBuffer: Buffer;
-  input: CombinedPromptInput;
   placement: PlacementScheme;
-  lightingType: LightingType;
-  mountTarget: MountTarget;
-  imageWidth?: number;
-  imageHeight?: number;
+  fixture: Fixture;
+  specification: CalculationResult;
+  promptId: string;
+  dimensions?: BuildingDimensions;
+  analysis?: FacadeAnalysis;
+  provider?: ActiveImageProvider | null;
+  logger?: PipelineLogger;
 }
 
-async function getImageSize(
-  buffer: Buffer,
-  fallbackW?: number,
-  fallbackH?: number
-): Promise<{ width: number; height: number }> {
-  if (fallbackW && fallbackH) {
-    return { width: fallbackW, height: fallbackH };
-  }
-  const meta = await sharp(buffer).metadata();
-  return {
-    width: meta.width ?? 1024,
-    height: meta.height ?? 768,
+/**
+ * 1) Локально: вечер + корпуса светильников на линиях (подсказка для AI).
+ * 2) AI: редактирование кадра по полному промпту (товар, кол-во, вечер, 3000K).
+ * 3) Fallback: локальный кадр, если AI недоступен.
+ */
+export async function runVisualizationPipeline(
+  options: VisualizePipelineOptions
+): Promise<VisualizationResponse> {
+  const logger = options.logger ?? new PipelineLogger();
+  const log = logger.child("visualize");
+
+  const promptInput: CombinedPromptInput = {
+    promptId: options.promptId,
+    fixtureId: options.fixture.id,
+    dimensions: options.dimensions,
+    analysis: options.analysis,
+    calculation: options.specification,
   };
-}
+  const combinedPrompt = buildCombinedPrompt(promptInput, "openai_edit");
 
-async function renderOnOriginalPhoto(
-  options: VisualizeImageOptions,
-  provider: "yandex"
-): Promise<VisualizeImageResult> {
-  const imageDataUrl = await renderLocalVisualization(
-    options.imageBuffer,
-    options.placement,
-    options.lightingType,
-    options.mountTarget
-  );
-  return {
-    imageDataUrl,
-    promptUsed: buildYandexPrompt(options.input),
-    mode: "yandex_photo",
-    provider,
-    userMessage:
-      "Подсветка на вашем фото (расчётная схема). Для генерации через YandexART добавьте YANDEX_FOLDER_ID или отключите YANDEX_KEEP_ORIGINAL_PHOTO=false.",
-  };
-}
+  log.log("start", "visualization pipeline", {
+    fixtureId: options.fixture.id,
+    placements: options.placement.fixtures.length,
+    quantity: options.specification.quantity,
+  });
 
-export async function generateVisualization(
-  options: VisualizeImageOptions
-): Promise<VisualizeImageResult> {
-  const provider = resolveImageProvider();
-
-  if (provider === "gigachat") {
-    const mimeMatch = options.imageDataUrl.match(/^data:(image\/\w+);/);
-    const mime = mimeMatch?.[1] ?? "image/jpeg";
-    try {
-      const result = await generateImageWithGigaChat(
-        options.imageBuffer,
-        mime,
-        options.input
-      );
-      return {
-        imageDataUrl: result.imageDataUrl,
-        promptUsed: result.promptUsed,
-        mode: "gigachat",
-        provider: "gigachat",
-        userMessage: `Сгенерировано GigaChat (${result.modelUsed}): подсветка по вашему фото.`,
-      };
-    } catch (e) {
-      if (e instanceof GigaChatError && shouldAllowLocalFallback()) {
-        const imageDataUrl = await renderLocalVisualization(
-          options.imageBuffer,
-          options.placement,
-          options.lightingType,
-          options.mountTarget
-        );
-        const { buildCombinedPrompt } = await import("./buildCombinedPrompt");
-        return {
-          imageDataUrl,
-          promptUsed: buildCombinedPrompt(options.input, "openai_edit"),
-          mode: "gigachat_photo",
-          provider: "gigachat",
-          userMessage:
-            "GigaChat не сгенерировал картинку — подсветка на вашем фото (запасной режим).",
-        };
-      }
-      throw e instanceof GigaChatError
-        ? e
-        : new GigaChatError({
-            code: "unknown",
-            message: e instanceof Error ? e.message : "Ошибка GigaChat",
-            hint: "",
-          });
-    }
-  }
-
-  if (provider === "yandex") {
-    const folderId = getYandexFolderId();
-
-    if (!folderId || shouldYandexKeepOriginalPhoto()) {
-      const result = await renderOnOriginalPhoto(options, "yandex");
-      if (!folderId) {
-        result.userMessage =
-          "Подсветка на вашем фото. Чтобы вызывать YandexART, укажите YANDEX_FOLDER_ID в .env.local (ID каталога в Yandex Cloud).";
-      } else {
-        result.userMessage =
-          "Подсветка на вашем фото (YANDEX_KEEP_ORIGINAL_PHOTO=true). Для YandexART установите YANDEX_KEEP_ORIGINAL_PHOTO=false.";
-      }
-      return result;
-    }
-
-    const { width, height } = await getImageSize(
+  const { dataUrl: localVisualization, report: localRenderReport } =
+    await renderLocalVisualization(
       options.imageBuffer,
-      options.imageWidth,
-      options.imageHeight
+      options.placement,
+      options.fixture,
+      logger,
+      PREP_FOR_AI_DISPLAY_OPTIONS
     );
 
-    try {
-      const result = await generateImageWithYandex(options.input, width, height);
-      return {
-        ...result,
-        mode: "yandex",
-        provider: "yandex",
-        userMessage:
-          "Сгенерировано YandexART по промпту (новое изображение; для точного совпадения с вашим фасадом нужен режим редактирования фото).",
-      };
-    } catch (e) {
-      throw e instanceof YandexArtError ? e : new YandexArtError(parseYandexError(e));
-    }
+  log.log("local-prep", "fixture prep for AI", {
+    pngComposited: localRenderReport.pngComposited,
+    fixtureFileExists: localRenderReport.fixtureFileExists,
+  });
+
+  const base: VisualizationResponse = {
+    originalImage: options.imageDataUrl,
+    localVisualization,
+    placementScheme: options.placement,
+    specification: options.specification,
+    mode: "local",
+    lightPrompt: combinedPrompt,
+    localRenderReport,
+    pipelineLog: logger.snapshot(),
+  };
+
+  if (!isAiConfigured()) {
+    log.log("ai-skip", "AI not configured", {}, "warn");
+    return {
+      ...base,
+      message:
+        "AI не настроен. Показана локальная визуализация с корпусами светильников.",
+    };
   }
 
+  let provider: ActiveImageProvider;
   try {
-    const result = await generateImageWithOpenAI(options.imageDataUrl, options.input);
+    provider = resolveImageProvider(options.provider ?? null);
+  } catch (e) {
+    log.log("ai-skip", "provider resolve failed", {
+      error: e instanceof Error ? e.message : String(e),
+    }, "warn");
     return {
-      imageDataUrl: result.imageDataUrl,
-      promptUsed: result.promptUsed,
+      ...base,
+      message: "AI не настроен. Локальная визуализация с корпусами.",
+    };
+  }
+
+  const prepDataUrl = localVisualization;
+  const prepBuffer = dataUrlToBuffer(localVisualization);
+
+  log.log("ai-start", "primary AI generation", { provider });
+
+  try {
+    if (provider === "gigachat") {
+      const ai = await generateImageWithGigaChat(
+        prepBuffer,
+        "image/jpeg",
+        combinedPrompt
+      );
+      log.log("ai-done", "gigachat ok", { model: ai.modelUsed });
+      return {
+        ...base,
+        aiVisualization: ai.imageDataUrl,
+        mode: "gigachat",
+        provider: "gigachat",
+        message: `Сгенерировано GigaChat (${ai.modelUsed}): вечерняя подсветка с видимыми светильниками.`,
+        pipelineLog: logger.snapshot(),
+      };
+    }
+
+    if (provider === "yandex") {
+      if (!getYandexFolderId() || shouldYandexKeepOriginalPhoto()) {
+        log.log("ai-skip", "yandex photo-only mode");
+        return {
+          ...base,
+          mode: "yandex_photo",
+          provider: "yandex",
+          message:
+            "Подсветка на вашем фото (локально). Для YandexART укажите YANDEX_FOLDER_ID.",
+        };
+      }
+    }
+
+    const ai = await generateImageWithOpenAI(prepDataUrl, promptInput);
+    log.log("ai-done", "openai/gatellm ok");
+    return {
+      ...base,
+      aiVisualization: ai.imageDataUrl,
       mode: "openai",
       provider: "openai",
-      userMessage: isGateLlmConfigured()
-        ? "Фото обработано через GateLLM (chat + image): подсветка на вашем здании."
-        : "Фото обработано OpenAI: подсветка добавлена на исходное изображение.",
+      message: usesChatCompletionsForImages()
+        ? `Фото обработано ${getOpenAiProxyLabel()}: вечер, тёплый свет 3000K, видимые светильники NITEOS.`
+        : "Фото обработано OpenAI: вечерняя архитектурная подсветка.",
+      lightPrompt: ai.promptUsed,
+      pipelineLog: logger.snapshot(),
     };
   } catch (e) {
-    if (e instanceof OpenAiImageError) throw e;
+    const errMsg = e instanceof Error ? e.message : String(e);
+    log.log("ai-error", "AI generation failed", { error: errMsg }, "warn");
+
+    if (shouldAllowLocalFallback()) {
+      return {
+        ...base,
+        message: `AI не сработал (${errMsg}). Локальная визуализация с корпусами светильников.`,
+        pipelineLog: logger.snapshot(),
+      };
+    }
+
+    if (e instanceof OpenAiImageError || e instanceof GigaChatError) {
+      throw e;
+    }
     throw new OpenAiImageError(parseOpenAiError(e), []);
   }
 }
@@ -192,12 +200,32 @@ export function parseVisualizationError(error: unknown): {
   message: string;
   hint: string;
 } {
-  if (error instanceof YandexArtError) return error.parsed;
   if (error instanceof OpenAiImageError) return error.parsed;
   if (error instanceof GigaChatError) return error.parsed;
+  if (error instanceof YandexArtError) return error.parsed;
   return {
     code: "unknown",
     message: error instanceof Error ? error.message : "Ошибка визуализации",
     hint: "",
+  };
+}
+
+/** @deprecated */
+export async function generateVisualization(
+  options: VisualizePipelineOptions
+): Promise<{
+  imageDataUrl: string;
+  promptUsed: string;
+  mode: VisualizeMode;
+  provider: string;
+  userMessage?: string;
+}> {
+  const result = await runVisualizationPipeline(options);
+  return {
+    imageDataUrl: result.aiVisualization ?? result.localVisualization,
+    promptUsed: result.lightPrompt ?? "",
+    mode: (result.mode as VisualizeMode) ?? "local",
+    provider: result.provider ?? "local",
+    userMessage: result.message,
   };
 }

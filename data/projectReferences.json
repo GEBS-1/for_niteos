@@ -1,0 +1,55 @@
+[
+  {
+    "id": "tts-yupiter-spb",
+    "title": "ТЦ «Юпитер», Санкт-Петербург",
+    "url": "https://niteos.ru/projects/proekty-arkhitekturnoe-led-osveshchenie/arkhitekturnaya-podsvetka-tts-yupiter-sankt-peterburg/",
+    "buildingType": "торговый центр",
+    "task": "Подсветка фасада + освещение парковки и зоны погрузки без установки столбов",
+    "fixtureIds": ["magistral-v3-ai-70", "nt-rainbow-24", "x-ray"],
+    "defaultPromptIds": [
+      "magistral-facade-175",
+      "rainbow-facade-wash",
+      "xray-lira50-territory",
+      "xray-spot-columns"
+    ],
+    "lightingSummary": "Комбинация MAGISTRAL, NT-RAINBOW (заливка), X-RAY Lira (территория), X-RAY SPOT (акценты). 5000K NICHIA, IP67.",
+    "promptHint": "Evening mall facade: linear belts + wide flood wash + ground floods for parking + discrete spot accents on architectural features. No random fixtures."
+  },
+  {
+    "id": "zhk-literator-surgut",
+    "title": "ЖК «Литератор», Сургут",
+    "url": "https://niteos.ru/projects/proekty-arkhitekturnoe-led-osveshchenie/arkhitekturnoe-osveshchenie-zhk-literator-g-surgut/",
+    "buildingType": "жилой комплекс",
+    "task": "Архитектурная подсветка жилого фасада с акцентами на рельеф",
+    "fixtureIds": ["x-ray"],
+    "defaultPromptIds": [
+      "xray-double-relief",
+      "xray-spot-columns",
+      "xray-lira50-facade-wash"
+    ],
+    "lightingSummary": "X-RAY DOUBLE 2×20, X-RAY SPOT 20, X-RAY Lira 50.",
+    "promptHint": "Residential facade: dual-beam on projecting tiers, spot accents on columns/balconies, soft Lira wash at base."
+  },
+  {
+    "id": "residential-xray-spot",
+    "title": "Архитектурная подсветка жилого дома",
+    "url": "https://niteos.ru/projects/proekty-arkhitekturnoe-led-osveshchenie/arkhitekturnaya-podsvetka-zhilogo-doma/",
+    "buildingType": "жилой дом",
+    "task": "Точечные акценты белым и цветным светом",
+    "fixtureIds": ["x-ray"],
+    "defaultPromptIds": ["xray-spot-color", "xray-double-relief"],
+    "lightingSummary": "X-RAY SPOT белый и синий со вторичной оптикой.",
+    "promptHint": "Discrete X-RAY SPOT accents on facade decor; optional blue accent zones; no linear belts unless selected."
+  },
+  {
+    "id": "classical-admin-facade",
+    "title": "Классическое административное здание",
+    "url": "https://niteos.ru/projects/proekty-arkhitekturnoe-led-osveshchenie/",
+    "buildingType": "административное / историческое здание",
+    "task": "Линейная подсветка по ярусам + уличные фонари",
+    "fixtureIds": ["magistral-v3-ai-70", "nt-park-step"],
+    "defaultPromptIds": ["magistral-facade-175", "nt-park-nearby-zone"],
+    "lightingSummary": "MAGISTRAL на карнизах и межэтажьях, опоры NT-park перед фасадом.",
+    "promptHint": "Classical columns facade: 4-6 horizontal MAGISTRAL belts full height, warm 3000K, existing street lanterns may glow."
+  }
+]

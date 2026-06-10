@@ -3,6 +3,9 @@ import type {
   BuildingDimensions,
   CalculationResult,
   FacadeAnalysis,
+  Fixture,
+  FixtureMountType,
+  FixturePlacement,
   LightingType,
   MountTarget,
   PlacementScheme,
@@ -85,7 +88,7 @@ function getAiTasks(): FacadeAnalysis["aiTasks"] {
   ];
 }
 
-export function buildFacadeAnalysis(params: AnalyzeRequest): FacadeAnalysis {
+export function buildFacadeAnalysisLegacy(params: AnalyzeRequest): FacadeAnalysis {
   const { imageWidth, imageHeight, dimensions, lightingType } = params;
   const { facadeWidthM, facadeHeightM, facadeLengthM, pixelsPerMeter } =
     resolveFacadeDimensions(imageWidth, imageHeight, dimensions);
@@ -127,7 +130,7 @@ export function buildFacadeAnalysis(params: AnalyzeRequest): FacadeAnalysis {
     pixelsPerMeter: Math.round(pixelsPerMeter * 10) / 10,
     imageQuality,
     qualityNotes,
-    aiMode: "mock",
+    aiMode: "mock" as const,
     aiTasks: getAiTasks(),
   };
 }
@@ -236,206 +239,151 @@ export function calculateAllLightingTypes(
   return result;
 }
 
-export function buildPlacementScheme(
-  imageWidth: number,
-  imageHeight: number,
-  lightingType: LightingType,
-  quantity: number,
-  mountTarget: MountTarget = "facade"
-): PlacementScheme {
-  const marginX = imageWidth * 0.08;
-  const marginY = imageHeight * 0.1;
-  const w = imageWidth - marginX * 2;
-  const h = imageHeight - marginY * 2;
-  const left = marginX;
-  const top = marginY;
-  const right = left + w;
-  const bottom = top + h;
-
-  const points: PlacementScheme["points"] = [];
-  const lines: PlacementScheme["lines"] = [];
-  const zoneLabels: PlacementScheme["zoneLabels"] = [];
-
-  if (mountTarget === "nearby") {
-    const baseY = bottom + h * 0.06;
-    const span = w * 0.9;
-    const startX = left + (w - span) / 2;
-    const rows = Math.max(1, Math.ceil(quantity / 6));
-    const perRow = Math.max(2, Math.ceil(quantity / rows));
-
-    for (let r = 0; r < rows; r++) {
-      const y = baseY + r * (h * 0.12);
-      for (let i = 0; i < perRow; i++) {
-        if (points.length >= quantity) break;
-        const t = perRow === 1 ? 0.5 : i / (perRow - 1);
-        points.push({ x: startX + span * t, y });
-      }
-      lines.push({ x1: startX, y1: y, x2: startX + span, y2: y });
-    }
-    zoneLabels.push({
-      x: startX + span / 2,
-      y: baseY - 12,
-      label: "Опоры рядом с фасадом",
-    });
-    return { points: points.slice(0, quantity), lines, zoneLabels };
-  }
-
-  const placeAlongLine = (
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    count: number
-  ) => {
-    for (let i = 0; i < count; i++) {
-      const t = count <= 1 ? 0.5 : i / (count - 1);
-      points.push({
-        x: x1 + (x2 - x1) * t,
-        y: y1 + (y2 - y1) * t,
-      });
-    }
-  };
-
-  switch (lightingType) {
-    case "контурная": {
-      lines.push(
-        { x1: left, y1: top, x2: right, y2: top },
-        { x1: right, y1: top, x2: right, y2: bottom },
-        { x1: right, y1: bottom, x2: left, y2: bottom },
-        { x1: left, y1: bottom, x2: left, y2: top }
-      );
-      const perSide = Math.max(1, Math.floor(quantity / 4));
-      placeAlongLine(left, top, right, top, perSide);
-      placeAlongLine(right, top, right, bottom, perSide);
-      placeAlongLine(right, bottom, left, bottom, perSide);
-      placeAlongLine(left, bottom, left, top, perSide);
-      zoneLabels.push({ x: left + w / 2, y: top + 15, label: "Контур NITEOS" });
-      break;
-    }
-    case "линейная": {
-      const rows = 3;
-      for (let r = 0; r < rows; r++) {
-        const y = top + (h * (r + 1)) / (rows + 1);
-        lines.push({ x1: left, y1: y, x2: right, y2: y });
-        const perRow = Math.max(1, Math.floor(quantity / rows));
-        placeAlongLine(left, y, right, y, perRow);
-      }
-      zoneLabels.push({ x: left + w / 2, y: top + h * 0.35, label: "Линейные зоны" });
-      break;
-    }
-    case "оконная": {
-      const cols = 4;
-      const rows = Math.max(2, Math.ceil(quantity / cols));
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          if (points.length >= quantity) break;
-          points.push({
-            x: left + (w * (col + 0.5)) / cols,
-            y: top + (h * (row + 1)) / (rows + 1),
-          });
-        }
-      }
-      zoneLabels.push({ x: left + w / 2, y: top + h * 0.5, label: "Оконные зоны" });
-      break;
-    }
-    case "заливная": {
-      const cols = Math.max(3, Math.ceil(Math.sqrt(quantity)));
-      for (let i = 0; i < quantity; i++) {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        points.push({
-          x: left + (w * (col + 0.5)) / cols,
-          y: top + (h * (row + 0.5)) / Math.ceil(quantity / cols),
-        });
-      }
-      lines.push({ x1: left, y1: bottom - h * 0.05, x2: right, y2: bottom - h * 0.05 });
-      zoneLabels.push({ x: left + w / 2, y: bottom - 30, label: "Заливка фасада" });
-      break;
-    }
-    case "акцентная":
-    default: {
-      const accents = [
-        { x: left, y: top },
-        { x: right, y: top },
-        { x: left, y: bottom },
-        { x: right, y: bottom },
-        { x: left + w / 2, y: top + h * 0.3 },
-      ];
-      const used = accents.slice(0, Math.min(quantity, accents.length));
-      points.push(...used);
-      let remaining = quantity - used.length;
-      let idx = 0;
-      while (remaining > 0) {
-        const t = (idx % 5) / 5;
-        points.push({
-          x: left + w * (0.15 + t * 0.7),
-          y: top + h * (0.25 + ((idx * 0.17) % 1) * 0.45),
-        });
-        remaining--;
-        idx++;
-      }
-      zoneLabels.push({ x: left + 20, y: top + 20, label: "Акценты" });
-      break;
-    }
-  }
-
-  return { points: points.slice(0, quantity), lines, zoneLabels };
+export interface BuildPlacementParams {
+  quantity: number;
+  fixture: Fixture;
+  lightingType: LightingType;
+  mountTarget: MountTarget;
+  analysis: FacadeAnalysis;
 }
 
-export function buildFullAnalyzeResult(
-  params: AnalyzeRequest
-): {
-  analysis: FacadeAnalysis;
-  calculations: Record<LightingType, CalculationResult>;
-  recommendedLightingType: LightingType;
-  placement: PlacementScheme;
-  activeCalculation: CalculationResult;
-} {
-  const analysisBase = buildFacadeAnalysis({ ...params, lightingType: undefined });
+function resolveMountType(fixture: Fixture, mountTarget: MountTarget): FixtureMountType {
+  if (fixture.mountType) return fixture.mountType;
+  if (mountTarget === "nearby") return "pole";
+  if (fixture.category === "linear_facade") return "linear";
+  return "facade";
+}
 
-  let selectedPrompt: UsagePrompt | undefined;
-  if (params.fixtureId || params.promptId) {
-    const fixture = params.fixtureId
-      ? CATALOG.find((f) => f.id === params.fixtureId)
-      : undefined;
-    const inFixture = fixture?.usagePrompts.find((p) => p.id === params.promptId);
-    const inCatalog = CATALOG.flatMap((f) => f.usagePrompts).find(
-      (p) => p.id === params.promptId
-    );
-    selectedPrompt =
-      inFixture ??
-      inCatalog ??
-      fixture?.usagePrompts[0];
+function placeAlongNormalized(
+  fixtures: FixturePlacement[],
+  productId: string,
+  mountType: FixtureMountType,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  count: number,
+  rotation: number,
+  scale: number
+) {
+  for (let i = 0; i < count; i++) {
+    const t = count <= 1 ? 0.5 : i / (count - 1);
+    fixtures.push({
+      x: x1 + (x2 - x1) * t,
+      y: y1 + (y2 - y1) * t,
+      rotation,
+      scale,
+      productId,
+      mountType,
+    });
+  }
+}
+
+/** Нормализованная расстановка светильников (0–1), без участия AI */
+export function buildPlacementScheme(params: BuildPlacementParams): PlacementScheme {
+  const { quantity, fixture, lightingType, mountTarget, analysis } = params;
+  const productId = fixture.id;
+  const mountType = resolveMountType(fixture, mountTarget);
+
+  const facadeBox = { x: 0.08, y: 0.1, width: 0.84, height: 0.78 };
+  const bx = facadeBox.x;
+  const by = facadeBox.y;
+  const bw = facadeBox.width;
+  const bh = facadeBox.height;
+  const left = bx;
+  const right = bx + bw;
+  const top = by;
+  const bottom = by + bh;
+
+  const fixtures: FixturePlacement[] = [];
+  const isLinear = mountType === "linear" || lightingType === "линейная";
+  const isPole = mountType === "pole" || mountTarget === "nearby";
+  const baseScale = isLinear ? 0.11 : isPole ? 0.14 : 0.1;
+  const rotation = isPole ? 0 : isLinear ? 0 : 0;
+
+  if (isPole) {
+    const groundY = Math.min(0.96, bottom + 0.04);
+    const perRow = Math.max(2, Math.min(quantity, 8));
+    for (let i = 0; i < quantity; i++) {
+      const t = quantity <= 1 ? 0.5 : i / (quantity - 1);
+      fixtures.push({
+        x: left + bw * (0.06 + t * 0.88),
+        y: groundY,
+        rotation: 0,
+        scale: baseScale,
+        productId,
+        mountType: "pole",
+      });
+    }
+  } else if (isLinear) {
+    const rows = Math.min(3, Math.max(1, Math.ceil(quantity / 6)));
+    let placed = 0;
+    for (let r = 0; r < rows && placed < quantity; r++) {
+      const y = top + (bh * (r + 1)) / (rows + 1);
+      const rowCount = Math.min(
+        quantity - placed,
+        Math.max(1, Math.ceil(quantity / rows))
+      );
+      placeAlongNormalized(
+        fixtures,
+        productId,
+        "linear",
+        left + bw * 0.04,
+        y,
+        right - bw * 0.04,
+        y,
+        rowCount,
+        0,
+        baseScale
+      );
+      placed += rowCount;
+    }
+  } else if (lightingType === "оконная") {
+    const cols = 4;
+    const rows = Math.max(2, Math.ceil(quantity / cols));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (fixtures.length >= quantity) break;
+        fixtures.push({
+          x: left + (bw * (col + 0.5)) / cols,
+          y: top + (bh * (row + 1)) / (rows + 1),
+          rotation: 0,
+          scale: baseScale * 0.85,
+          productId,
+          mountType: "facade",
+        });
+      }
+    }
+  } else if (lightingType === "контурная") {
+    const perSide = Math.max(1, Math.floor(quantity / 4));
+    placeAlongNormalized(fixtures, productId, "facade", left, top, right, top, perSide, 0, baseScale);
+    placeAlongNormalized(fixtures, productId, "facade", right, top, right, bottom, perSide, 90, baseScale);
+    placeAlongNormalized(fixtures, productId, "facade", right, bottom, left, bottom, perSide, 0, baseScale);
+    placeAlongNormalized(fixtures, productId, "facade", left, bottom, left, top, perSide, 90, baseScale);
+  } else {
+    const cols = Math.max(3, Math.ceil(Math.sqrt(quantity)));
+    for (let i = 0; i < quantity; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      fixtures.push({
+        x: left + (bw * (col + 0.5)) / cols,
+        y: top + (bh * (row + 0.5)) / Math.ceil(quantity / cols),
+        rotation: 0,
+        scale: baseScale,
+        productId,
+        mountType: "facade",
+      });
+    }
   }
 
-  const lightingType =
-    params.lightingType ??
-    selectedPrompt?.lightingType ??
-    recommendLightingType(analysisBase);
-  const analysis = buildFacadeAnalysis({ ...params, lightingType });
-  const calculations = calculateAllLightingTypes(params, analysis);
-
-  const activeCalculation = calculateProject(
-    params,
-    analysis,
-    lightingType,
-    params.fixtureId,
-    selectedPrompt
-  );
-
-  const placement = buildPlacementScheme(
-    params.imageWidth,
-    params.imageHeight,
-    lightingType,
-    activeCalculation.quantity,
-    activeCalculation.mountTarget
-  );
-
   return {
-    analysis,
-    calculations,
-    recommendedLightingType: recommendLightingType(analysis),
-    placement,
-    activeCalculation,
+    fixtures: fixtures.slice(0, quantity),
+    facadeBox,
+    estimatedWidthM: analysis.facadeWidthM,
+    estimatedHeightM: analysis.facadeHeightM,
   };
+}
+
+export function buildFacadeAnalysis(params: AnalyzeRequest): FacadeAnalysis {
+  return buildFacadeAnalysisLegacy(params);
 }

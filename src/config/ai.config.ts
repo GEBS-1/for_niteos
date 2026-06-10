@@ -99,9 +99,80 @@ export function getOpenAiApiKey(): string | undefined {
   return readFirstEnv(AI_PROVIDER_CONFIG.openAiApiKeyEnvs);
 }
 
+export type OpenAiProxyKind = "gatellm" | "routerai" | "custom" | "direct";
+
+/** Какой OpenAI-совместимый прокси задан в OPENAI_BASE_URL */
+export function getOpenAiProxyKind(): OpenAiProxyKind {
+  const base = process.env[AI_PROVIDER_CONFIG.openAiBaseUrlEnv]?.trim().toLowerCase() ?? "";
+  if (!base) return "direct";
+  if (base.includes("gatellm.ru")) return "gatellm";
+  if (base.includes("routerai.ru")) return "routerai";
+  return "custom";
+}
+
 export function isGateLlmConfigured(): boolean {
-  const base = process.env[AI_PROVIDER_CONFIG.openAiBaseUrlEnv]?.trim() ?? "";
-  return base.includes("gatellm.ru");
+  return getOpenAiProxyKind() === "gatellm";
+}
+
+export function isRouterAiConfigured(): boolean {
+  return getOpenAiProxyKind() === "routerai";
+}
+
+/** GateLLM и RouterAI: генерация картинки через chat/completions, не images.edit */
+export function usesChatCompletionsForImages(): boolean {
+  const kind = getOpenAiProxyKind();
+  return kind === "gatellm" || kind === "routerai";
+}
+
+export function getOpenAiProxyLabel(): string {
+  switch (getOpenAiProxyKind()) {
+    case "gatellm":
+      return "GateLLM";
+    case "routerai":
+      return "RouterAI";
+    case "custom":
+      return "OpenAI proxy";
+    default:
+      return "OpenAI";
+  }
+}
+
+/** Модели image-chat для перебора при сбое основной (OPENAI_IMAGE_MODEL) */
+export function getProxyChatImageModels(): string[] {
+  switch (getOpenAiProxyKind()) {
+    case "routerai":
+      return [
+        "google/gemini-2.5-flash-image",
+        "openai/gpt-5-image-mini",
+        "openai/gpt-5.4-image-2",
+        "openai/gpt-5-image",
+        "google/gemini-3.1-flash-image-preview",
+      ];
+    case "gatellm":
+      return [
+        "openai/gpt-5-image",
+        "openai/gpt-5.4-image-2",
+        "openai/gpt-5-image-mini",
+      ];
+    default:
+      return [
+        "openai/gpt-5-image",
+        "openai/gpt-5.4-image-2",
+        "openai/gpt-5-image-mini",
+        "gpt-image-1",
+      ];
+  }
+}
+
+export function getOpenAiProxyBillingHint(): string {
+  switch (getOpenAiProxyKind()) {
+    case "gatellm":
+      return "Пополните баланс на gatellm.ru (личный кабинет).";
+    case "routerai":
+      return "Пополните баланс на routerai.ru (личный кабинет).";
+    default:
+      return "Проверьте баланс OpenAI или прокси-провайдера.";
+  }
 }
 
 export function getOpenAiImageModel(): string {
@@ -145,37 +216,74 @@ export function isAiConfigured(): boolean {
   return isOpenAiConfigured() || isYandexApiKeySet() || isGigachatConfigured();
 }
 
-export function resolveImageProvider(): "openai" | "yandex" | "gigachat" {
+export type ActiveImageProvider = "openai" | "yandex" | "gigachat";
+
+/** Какие провайдеры можно выбрать на сайте (оба ключа могут быть заданы) */
+export function getSelectableProviders(): Array<"openai" | "gigachat"> {
+  const list: Array<"openai" | "gigachat"> = [];
+  if (isOpenAiConfigured()) list.push("openai");
+  if (isGigachatConfigured()) list.push("gigachat");
+  return list;
+}
+
+export function getDefaultSelectableProvider(): "openai" | "gigachat" | null {
+  const available = getSelectableProviders();
+  if (available.length === 0) return null;
+  const env = process.env.AI_IMAGE_PROVIDER?.trim().toLowerCase();
+  if (env === "openai" && available.includes("openai")) return "openai";
+  if (env === "gigachat" && available.includes("gigachat")) return "gigachat";
+  return available[0];
+}
+
+/**
+ * @param selected — выбор пользователя на сайте (openai | gigachat)
+ */
+export function resolveImageProvider(
+  selected?: ActiveImageProvider | null
+): ActiveImageProvider {
   ensureGigachatEnvPriority();
-  const pref =
-    process.env.AI_IMAGE_PROVIDER?.trim().toLowerCase() as ImageProvider | undefined;
-  const resolvedPref: ImageProvider =
-    pref === "openai" || pref === "yandex" || pref === "gigachat" || pref === "auto"
-      ? pref
-      : AI_PROVIDER_CONFIG.imageProvider;
-  if (resolvedPref === "gigachat") {
-    if (!isGigachatConfigured()) {
-      throw new Error("AI_IMAGE_PROVIDER=gigachat, но GIGACHAT_CREDENTIALS не задан в .env.gigachat");
-    }
-    return "gigachat";
-  }
-  if (resolvedPref === "openai") {
+
+  if (selected === "openai") {
     if (!isOpenAiConfigured()) {
-      throw new Error("AI_IMAGE_PROVIDER=openai, но OPENAI_API_KEY не задан");
+      throw new Error("OpenAI/GateLLM: задайте OPENAI_API_KEY в .env.local");
     }
     return "openai";
   }
-  if (resolvedPref === "yandex") {
+  if (selected === "gigachat") {
+    if (!isGigachatConfigured()) {
+      throw new Error("GigaChat: задайте GIGACHAT_CREDENTIALS в .env.gigachat");
+    }
+    return "gigachat";
+  }
+  if (selected === "yandex") {
     if (!isYandexApiKeySet()) {
-      throw new Error("AI_IMAGE_PROVIDER=yandex, но YANDEX_API_KEY не задан");
+      throw new Error("Yandex: задайте YANDEX_API_KEY");
     }
     return "yandex";
   }
-  if (isGigachatConfigured()) return "gigachat";
+
+  const envPref = process.env.AI_IMAGE_PROVIDER?.trim().toLowerCase() as
+    | ImageProvider
+    | undefined;
+  const resolvedPref: ImageProvider =
+    envPref === "openai" ||
+    envPref === "yandex" ||
+    envPref === "gigachat" ||
+    envPref === "auto"
+      ? envPref
+      : AI_PROVIDER_CONFIG.imageProvider;
+
+  if (resolvedPref === "gigachat" && isGigachatConfigured()) return "gigachat";
+  if (resolvedPref === "openai" && isOpenAiConfigured()) return "openai";
+  if (resolvedPref === "yandex" && isYandexApiKeySet()) return "yandex";
+
+  const def = getDefaultSelectableProvider();
+  if (def) return def;
   if (isOpenAiConfigured()) return "openai";
+  if (isGigachatConfigured()) return "gigachat";
   if (isYandexApiKeySet()) return "yandex";
   throw new Error(
-    "Не настроен провайдер: .env.gigachat, YANDEX_API_KEY или OPENAI_API_KEY"
+    "Не настроен AI: добавьте OPENAI_API_KEY (.env.local) и/или .env.gigachat"
   );
 }
 
@@ -193,6 +301,22 @@ export function shouldAllowLocalFallback(): boolean {
   return AI_PROVIDER_CONFIG.allowLocalFallback;
 }
 
+/** AI-детекция facadeBox + mountLines (этап 1) */
+export function shouldAiAnalyzeFacade(): boolean {
+  const v = process.env.AI_ANALYZE_FACADE?.trim().toLowerCase();
+  if (v === "0" || v === "false") return false;
+  if (v === "1" || v === "true") return true;
+  return isOpenAiConfigured();
+}
+
+/** Опциональное AI-улучшение света поверх локальной визуализации */
+export function shouldAiEnhanceLight(): boolean {
+  const v = process.env.AI_ENHANCE_LIGHT?.trim().toLowerCase();
+  if (v === "0" || v === "false") return false;
+  if (v === "1" || v === "true") return true;
+  return false;
+}
+
 export function shouldYandexKeepOriginalPhoto(): boolean {
   return AI_PROVIDER_CONFIG.yandexKeepOriginalPhoto;
 }
@@ -200,6 +324,7 @@ export function shouldYandexKeepOriginalPhoto(): boolean {
 export function getEffectiveBaseUrlDisplay(): string {
   const url = getOpenAiBaseUrl();
   if (!url) return "https://api.openai.com/v1 (прямое подключение)";
-  if (url.includes("gatellm.ru")) return `${url} (GateLLM)`;
+  const label = getOpenAiProxyLabel();
+  if (getOpenAiProxyKind() !== "direct") return `${url} (${label})`;
   return url;
 }

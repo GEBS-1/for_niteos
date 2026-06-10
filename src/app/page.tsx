@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/Header";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { ConfigPanel } from "@/components/ConfigPanel";
 import { FixtureCatalogStage } from "@/components/FixtureCatalogStage";
-import { ResultSpecificationTable } from "@/components/ResultSpecificationTable";
-import { AiPipelineNote } from "@/components/AiPipelineNote";
+import { AiProviderPanel } from "@/components/AiProviderPanel";
+import type { SelectableAiProvider } from "@/lib/ai/providerTypes";
 import { validateDimensions } from "@/lib/calculation";
 import { runClientAnalyze } from "@/lib/clientAnalyze";
 import { runClientVisualization } from "@/lib/clientVisualize";
 import { isStaticHosting, withBasePath } from "@/lib/basePath";
+import { ResultsFeedbackForm } from "@/components/ResultsFeedbackForm";
+import { captureLeadFromUrl, trackLeadEvent } from "@/lib/leadTracking.client";
+import { buildQuantityHint } from "@/lib/fixtureMount";
+import { buildStubPricing } from "@/lib/pricingStub";
 import type {
   AnalyzeResponse,
   BuildingDimensions,
@@ -32,8 +36,12 @@ export default function HomePage() {
   const [lengthM, setLengthM] = useState("");
   const [heightM, setHeightM] = useState("");
 
-  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(
+    "magistral-v3-ai-70"
+  );
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
+    "magistral-facade-175"
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,20 +49,15 @@ export default function HomePage() {
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [afterUrl, setAfterUrl] = useState<string | null>(null);
   const [activeCalculation, setActiveCalculation] = useState<CalculationResult | null>(null);
-  const [visualMode, setVisualMode] = useState<
-    | "openai"
-    | "yandex"
-    | "yandex_photo"
-    | "gigachat"
-    | "gigachat_photo"
-    | "local_fallback"
-    | "static_demo"
-    | null
-  >(null);
+  const [aiProvider, setAiProvider] = useState<SelectableAiProvider | null>(null);
+  const [visualMode, setVisualMode] = useState<string | null>(null);
   const [visualMessage, setVisualMessage] = useState<string | null>(null);
-  const [combinedPrompt, setCombinedPrompt] = useState<string | null>(null);
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [videoMessage, setVideoMessage] = useState<string | null>(null);
+  const [visLoading, setVisLoading] = useState(false);
+
+  useEffect(() => {
+    captureLeadFromUrl();
+    void trackLeadEvent("visit");
+  }, []);
 
   const dimensions: BuildingDimensions = useMemo(
     () => ({
@@ -84,23 +87,74 @@ export default function HomePage() {
     []
   );
 
-  const loadKazanDemo = useCallback(async () => {
-    try {
-      const res = await fetch(withBasePath("/samples/meriya-kazani.jpg"));
-      const blob = await res.blob();
-      const file = new File([blob], "meriya-kazani.jpg", { type: blob.type });
-      const { loadImageFromFile } = await import("@/lib/imageLoad");
-      const loaded = await loadImageFromFile(file);
-      onFileSelect(loaded.file, loaded.dataUrl, loaded.width, loaded.height);
-      setHeightM("18");
-      setSelectedFixtureId("magistral-v3");
-      setSelectedPromptId("magistral-facade-175");
-      setResult(null);
-      setAfterUrl(null);
-    } catch {
-      setError("Не удалось загрузить пример «Мэрия Казани»");
-    }
-  }, [onFileSelect]);
+  const loadSamplePhoto = useCallback(
+    async (
+      url: string,
+      filename: string,
+      opts: {
+        heightM?: string;
+        widthM?: string;
+        fixtureId: string;
+        promptId: string;
+        errorLabel: string;
+      }
+    ) => {
+      try {
+        const res = await fetch(withBasePath(url));
+        if (!res.ok) throw new Error("not found");
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: blob.type });
+        const { loadImageFromFile } = await import("@/lib/imageLoad");
+        const loaded = await loadImageFromFile(file);
+        onFileSelect(loaded.file, loaded.dataUrl, loaded.width, loaded.height);
+        if (opts.heightM) setHeightM(opts.heightM);
+        if (opts.widthM) setWidthM(opts.widthM);
+        setSelectedFixtureId(opts.fixtureId);
+        setSelectedPromptId(opts.promptId);
+        setResult(null);
+        setAfterUrl(null);
+        setError(null);
+      } catch {
+        setError(
+          `Не удалось загрузить ${opts.errorLabel}. Положите фото в assets/samples/ и запустите: node scripts/import-demo-samples.mjs`
+        );
+      }
+    },
+    [onFileSelect]
+  );
+
+  const loadKazanDemo = useCallback(
+    () =>
+      void loadSamplePhoto("/samples/meriya-kazani.jpg", "meriya-kazani.jpg", {
+        heightM: "18",
+        fixtureId: "magistral-v3-ai-70",
+        promptId: "magistral-facade-175",
+        errorLabel: "«Мэрия Казани»",
+      }),
+    [loadSamplePhoto]
+  );
+
+  const loadOfficeDemo = useCallback(
+    () =>
+      void loadSamplePhoto("/samples/demo-office-day.jpg", "demo-office-day.jpg", {
+        heightM: "22",
+        fixtureId: "magistral-v3-ai-70",
+        promptId: "magistral-facade-175",
+        errorLabel: "пример «Офис»",
+      }),
+    [loadSamplePhoto]
+  );
+
+  const loadBrickDemo = useCallback(
+    () =>
+      void loadSamplePhoto("/samples/demo-brick-day.jpg", "demo-brick-day.jpg", {
+        heightM: "8",
+        fixtureId: "magistral-v3-ai-70",
+        promptId: "magistral-facade-175",
+        errorLabel: "пример «Кирпич»",
+      }),
+    [loadSamplePhoto]
+  );
 
   const onSelectFixture = useCallback((prompt: UsagePrompt, fixtureId: string) => {
     setSelectedPromptId(prompt.id);
@@ -110,7 +164,6 @@ export default function HomePage() {
     setActiveCalculation(null);
     setVisualMode(null);
     setVisualMessage(null);
-    setVideoMessage(null);
   }, []);
 
   const fetchVisualization = useCallback(
@@ -128,6 +181,9 @@ export default function HomePage() {
         setAfterUrl(visData.imageDataUrl);
         setVisualMode(visData.mode);
         setVisualMessage(visData.message);
+        void trackLeadEvent("result_view", {
+          fixtureId: response.activeCalculation.fixture.id,
+        });
         return;
       }
 
@@ -145,31 +201,31 @@ export default function HomePage() {
           calculation: response.activeCalculation,
           lightingType: response.activeCalculation.lightingType,
           placement: response.placement,
+          provider: aiProvider ?? undefined,
         }),
       });
 
       const visData = await visRes.json();
 
-      if (visData.combinedPrompt) {
-        setCombinedPrompt(visData.combinedPrompt);
-      }
-
       if (!visRes.ok) {
         const code = visData.code ? `[${visData.code}] ` : "";
         const hint = visData.hint ? `\n\n${visData.hint}` : "";
-        throw new Error(`${code}${visData.error ?? "OpenAI не обработал фото"}${hint}`);
+        throw new Error(`${code}${visData.error ?? "AI не обработал фото"}${hint}`);
       }
 
       if (visData.imageDataUrl && visData.mode) {
         setAfterUrl(visData.imageDataUrl);
         setVisualMode(visData.mode);
         setVisualMessage(visData.message ?? "Готово");
+        void trackLeadEvent("result_view", {
+          fixtureId: response.activeCalculation.fixture.id,
+        });
         return;
       }
 
       throw new Error(visData.error ?? "Не удалось получить изображение");
     },
-    []
+    [aiProvider]
   );
 
   const runCalculate = useCallback(async () => {
@@ -185,6 +241,7 @@ export default function HomePage() {
           imageWidth: imageW,
           imageHeight: imageH,
           dimensions,
+          imageDataUrl: imageUrl ?? undefined,
           fixtureId: selectedFixtureId!,
           promptId: selectedPromptId!,
         });
@@ -196,6 +253,7 @@ export default function HomePage() {
             imageWidth: imageW,
             imageHeight: imageH,
             dimensions,
+            imageDataUrl: imageUrl,
             fixtureId: selectedFixtureId,
             promptId: selectedPromptId,
           }),
@@ -210,11 +268,19 @@ export default function HomePage() {
       setResult(response);
       setActiveCalculation(response.activeCalculation);
 
+      void trackLeadEvent("calculate", {
+        fixtureId: response.activeCalculation.fixture.id,
+        fixtureName: response.activeCalculation.fixture.name,
+        quantity: response.activeCalculation.quantity,
+        totalPrice: response.activeCalculation.totalPrice,
+      });
+
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
       }, 100);
 
       if (imageUrl && selectedPromptId && selectedFixtureId) {
+        setVisLoading(true);
         try {
           await fetchVisualization(
             imageUrl,
@@ -229,8 +295,10 @@ export default function HomePage() {
           setError(
             visErr instanceof Error
               ? visErr.message
-              : "Визуализация OpenAI не выполнена"
+              : "Локальная визуализация не выполнена"
           );
+        } finally {
+          setVisLoading(false);
         }
       }
     } catch (e) {
@@ -249,49 +317,22 @@ export default function HomePage() {
     fetchVisualization,
   ]);
 
-  const runGenerateVideo = useCallback(async () => {
-    if (!imageUrl || !selectedPromptId) return;
-    if (isStaticHosting) {
-      setVideoMessage("Видео доступно только при локальном запуске (npm run dev).");
-      return;
-    }
-    setVideoLoading(true);
-    setVideoMessage(null);
-    try {
-      const res = await fetch(withBasePath("/api/video"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageDataUrl: imageUrl,
-          promptId: selectedPromptId,
-          fixtureId: selectedFixtureId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Ошибка видео");
-      }
-      setVideoMessage(data.message ?? "Запрос отправлен");
-    } catch (e) {
-      setVideoMessage(e instanceof Error ? e.message : "Ошибка видео");
-    } finally {
-      setVideoLoading(false);
-    }
-  }, [imageUrl, selectedPromptId, selectedFixtureId]);
-
   const resetProject = () => {
     setResult(null);
     setAfterUrl(null);
     setActiveCalculation(null);
     setVisualMode(null);
     setVisualMessage(null);
-    setCombinedPrompt(null);
-    setVideoMessage(null);
     setError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const showResults = result && activeCalculation;
+  const showQuantity =
+    showResults && !visLoading && !!afterUrl && !!activeCalculation;
+  const stubPricing = activeCalculation
+    ? buildStubPricing(activeCalculation.quantity)
+    : null;
 
   return (
     <>
@@ -304,24 +345,43 @@ export default function HomePage() {
           </h2>
           <p className="text-niteos-muted">
             {showResults
-              ? "Готовый вариант визуализации и спецификация"
+              ? "Готовый вариант визуализации"
               : "Загрузите фото, укажите размеры и выберите светильник из каталога"}
           </p>
         </section>
 
         {!showResults && (
           <>
-            <AiPipelineNote />
+            <AiProviderPanel
+              selected={aiProvider}
+              onProviderChange={setAiProvider}
+            />
             <div className="grid lg:grid-cols-5 gap-6 mb-6">
               <div className="lg:col-span-3 space-y-3">
                 <PhotoUpload previewUrl={imageUrl} onFileSelect={onFileSelect} />
-                <button
-                  type="button"
-                  onClick={() => void loadKazanDemo()}
-                  className="w-full text-sm py-2.5 rounded-xl border border-niteos-border text-niteos-muted hover:border-niteos-electric hover:text-niteos-electric transition-colors"
-                >
-                  Загрузить пример: Мэрия Казани (18 м, МАГИСТРАЛЬ)
-                </button>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => void loadOfficeDemo()}
+                    className="text-sm py-2.5 rounded-xl border border-niteos-border text-niteos-muted hover:border-niteos-electric hover:text-niteos-electric transition-colors"
+                  >
+                    Пример: офис
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadBrickDemo()}
+                    className="text-sm py-2.5 rounded-xl border border-niteos-border text-niteos-muted hover:border-niteos-electric hover:text-niteos-electric transition-colors"
+                  >
+                    Пример: кирпич
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void loadKazanDemo()}
+                    className="text-sm py-2.5 rounded-xl border border-niteos-border text-niteos-muted hover:border-niteos-electric hover:text-niteos-electric transition-colors"
+                  >
+                    Мэрия Казани
+                  </button>
+                </div>
               </div>
               <div className="lg:col-span-2">
                 <ConfigPanel
@@ -331,19 +391,28 @@ export default function HomePage() {
                   onWidthChange={setWidthM}
                   onLengthChange={setLengthM}
                   onHeightChange={setHeightM}
-                  onCalculate={runCalculate}
-                  loading={loading}
-                  canCalculate={canCalculate}
                   dimensionError={dimensionError}
                 />
               </div>
             </div>
 
-            <FixtureCatalogStage
-              selectedPromptId={selectedPromptId}
-              selectedFixtureId={selectedFixtureId}
-              onSelect={onSelectFixture}
-            />
+            <div className="mb-6">
+              <FixtureCatalogStage
+                selectedFixtureId={selectedFixtureId}
+                onSelect={onSelectFixture}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void runCalculate()}
+              disabled={!canCalculate || loading}
+              className="w-full py-4 rounded-xl font-semibold electric-gradient text-niteos-bg shadow-glow disabled:opacity-50 disabled:cursor-not-allowed transition-transform hover:scale-[1.01] active:scale-[0.99] mb-2"
+            >
+              {loading || visLoading
+                ? "Расчёт и генерация…"
+                : "Рассчитать"}
+            </button>
           </>
         )}
 
@@ -354,7 +423,7 @@ export default function HomePage() {
         )}
 
         {showResults && (
-          <div id="results" className="space-y-6 scroll-mt-8 max-w-4xl mx-auto">
+          <div id="results" className="space-y-6 scroll-mt-8 max-w-3xl mx-auto">
             <div className="flex justify-end">
               <button
                 type="button"
@@ -365,93 +434,91 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div className="glass rounded-2xl p-4 overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <p className="text-sm text-niteos-muted">Визуализация с подсветкой</p>
-                {visualMode && (
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full border ${
-                      visualMode === "openai" ||
-                      visualMode === "yandex" ||
-                      visualMode === "gigachat"
-                        ? "border-green-500/40 text-green-400 bg-green-500/10"
-                        : visualMode === "yandex_photo" ||
-                            visualMode === "gigachat_photo"
-                          ? "border-niteos-electric/40 text-niteos-electric bg-niteos-electric/10"
-                          : "border-amber-500/40 text-amber-300 bg-amber-500/10"
-                    }`}
-                  >
-                    {visualMode === "openai"
-                      ? "OpenAI"
-                      : visualMode === "gigachat"
-                        ? "GigaChat"
-                        : visualMode === "yandex"
-                          ? "YandexART"
-                          : visualMode === "yandex_photo" ||
-                              visualMode === "gigachat_photo"
-                            ? "Ваше фото + подсветка"
-                            : visualMode === "static_demo"
-                              ? "Демо (GitHub Pages)"
-                              : "Запасная схема"}
-                  </span>
-                )}
-              </div>
-              {visualMessage && (
-                <p
-                  className={`text-xs mb-3 ${
-                    visualMode === "local_fallback" ||
-                    visualMode === "yandex_photo" ||
-                    visualMode === "gigachat_photo"
-                      ? "text-amber-300"
-                      : "text-niteos-muted"
-                  }`}
-                >
-                  {visualMessage}
+            <div className="glass rounded-2xl p-3 overflow-hidden space-y-2">
+              {visualMode && (
+                <p className="text-xs text-niteos-electric px-1">
+                  {visualMode === "openai"
+                    ? "OpenAI / RouterAI"
+                    : visualMode === "gigachat"
+                      ? "GigaChat"
+                      : visualMode === "local"
+                        ? "Локальная визуализация"
+                        : visualMode}
                 </p>
               )}
-              {afterUrl ? (
-                <div className="rounded-xl overflow-hidden bg-niteos-surface flex justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={afterUrl}
-                    alt="Фасад с подсветкой NITEOS"
-                    className="w-full max-h-[560px] object-contain"
-                  />
+              {visualMessage && (
+                <p className="text-xs text-niteos-muted px-1">{visualMessage}</p>
+              )}
+              {visLoading ? (
+                <div className="py-20 text-center text-sm text-niteos-muted">
+                  Генерация подсветки (AI)… до 2 мин
                 </div>
+              ) : afterUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={afterUrl}
+                  alt="Визуализация подсветки на фасаде"
+                  className="w-full max-h-[560px] object-contain rounded-lg"
+                />
               ) : (
-                <div className="rounded-xl border border-dashed border-niteos-border p-8 text-center text-niteos-muted text-sm">
-                  Изображение не сгенерировано. Смотрите красное сообщение выше и блок
-                  «Подключение OpenAI» — там точная причина (прокси, баланс, ключ).
+                <div className="rounded-lg border border-dashed border-niteos-border p-12 text-center text-sm text-niteos-muted">
+                  Изображение не сгенерировано
                 </div>
               )}
             </div>
 
-            {combinedPrompt && (
-              <details className="glass rounded-xl p-4 text-xs">
-                <summary className="cursor-pointer text-niteos-muted">
-                  Объединённый промпт для OpenAI
-                </summary>
-                <pre className="mt-3 whitespace-pre-wrap text-niteos-muted font-mono text-[11px]">
-                  {combinedPrompt}
-                </pre>
-              </details>
+            {showQuantity && stubPricing && (
+              <div className="glass rounded-2xl px-6 py-5 space-y-4">
+                <div className="text-center">
+                  <p className="text-niteos-muted text-sm mb-1">Светильник</p>
+                  <p className="text-lg font-semibold text-white">
+                    {activeCalculation.fixture.name}
+                  </p>
+                </div>
+
+                <div className="text-center border-t border-niteos-border/50 pt-4">
+                  <p className="text-niteos-muted text-sm mb-1">
+                    Количество (после визуализации)
+                  </p>
+                  <p className="text-4xl font-bold text-niteos-electric">
+                    {stubPricing.quantity}{" "}
+                    <span className="text-xl font-medium text-niteos-muted">шт.</span>
+                  </p>
+                  <p className="text-xs text-niteos-muted mt-2 max-w-md mx-auto">
+                    {buildQuantityHint(activeCalculation)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 border-t border-niteos-border/50 pt-4 text-center text-sm">
+                  <div>
+                    <p className="text-niteos-muted mb-1">Цена за шт.</p>
+                    <p className="font-semibold text-white">
+                      {stubPricing.unitPriceLabel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-niteos-muted mb-1">Итого оборудование</p>
+                    <p className="font-semibold text-niteos-electric">
+                      {stubPricing.equipmentTotalLabel}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-center text-niteos-muted">
+                  {stubPricing.note}
+                </p>
+              </div>
             )}
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void runGenerateVideo()}
-                disabled={videoLoading}
-                className="px-4 py-2 rounded-xl border border-niteos-electric text-niteos-electric hover:bg-niteos-electric/10 disabled:opacity-50 text-sm"
-              >
-                {videoLoading ? "Запуск видео…" : "Сгенерировать видео (Sora)"}
-              </button>
-            </div>
-            {videoMessage && (
-              <p className="text-sm text-niteos-muted -mt-3">{videoMessage}</p>
+            {showQuantity && activeCalculation && (
+              <ResultsFeedbackForm
+                context={{
+                  fixtureId: activeCalculation.fixture.id,
+                  fixtureName: activeCalculation.fixture.name,
+                  quantity: activeCalculation.quantity,
+                  totalPrice: activeCalculation.totalPrice,
+                }}
+              />
             )}
-
-            <ResultSpecificationTable calculation={activeCalculation} />
           </div>
         )}
       </main>
