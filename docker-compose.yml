@@ -1,0 +1,13 @@
+services:
+  niteos:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production
+    volumes:
+      - niteos-data:/app/data
+
+volumes:
+  niteos-data:
