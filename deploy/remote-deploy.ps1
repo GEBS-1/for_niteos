@@ -1,5 +1,5 @@
-# Деплой с Windows на VPS (нужен SSH-ключ deploy/niteos_deploy_key на сервере)
-# Использование: .\deploy\remote-deploy.ps1 -Server 194.226.187.101 -User root
+# Deploy from Windows to VPS (add deploy/niteos_deploy_key.pub to server first)
+# Usage: .\deploy\remote-deploy.ps1 -Server 194.226.187.101 -User root
 
 param(
   [string]$Server = "194.226.187.101",
@@ -14,10 +14,9 @@ $EnvLocal = Join-Path $Root ".env.local"
 $EnvProd = Join-Path $Root ".env.production.deploy"
 
 if (-not (Test-Path $Key)) {
-  Write-Error "Нет $Key — сначала сгенерируйте ключ (см. DEPLOY.md)"
+  Write-Error "Missing $Key - generate SSH key first (see DEPLOY.md)"
 }
 
-# .env.production для сервера
 $token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
 $lines = @(
   "NODE_ENV=production",
@@ -32,13 +31,13 @@ if (Test-Path $EnvLocal) {
   }
 }
 $lines | Set-Content $EnvProd -Encoding utf8
-Write-Host "LEADS_VIEW_TOKEN (сохраните): $token"
+Write-Host "LEADS_VIEW_TOKEN (save this): $token"
 
 $ssh = "ssh -i `"$Key`" -o StrictHostKeyChecking=accept-new ${User}@${Server}"
 $scp = "scp -i `"$Key`" -o StrictHostKeyChecking=accept-new"
 
-Invoke-Expression "$scp `"$EnvProd`" ${User}@${Server}:/tmp/.env.production"
-Invoke-Expression "$scp `"$PSScriptRoot\reg-ru-bootstrap.sh`" ${User}@${Server}:/tmp/reg-ru-bootstrap.sh"
-Invoke-Expression "$ssh `"bash /tmp/reg-ru-bootstrap.sh`""
+& scp -i $Key -o StrictHostKeyChecking=accept-new $EnvProd "${User}@${Server}:/tmp/.env.production"
+& scp -i $Key -o StrictHostKeyChecking=accept-new (Join-Path $PSScriptRoot "reg-ru-bootstrap.sh") "${User}@${Server}:/tmp/reg-ru-bootstrap.sh"
+& ssh -i $Key -o StrictHostKeyChecking=accept-new "${User}@${Server}" "bash /tmp/reg-ru-bootstrap.sh"
 
-Write-Host "Откройте: http://${Server}:3000"
+Write-Host "Open: http://${Server}:3000"
