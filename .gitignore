@@ -44,3 +44,4 @@ scripts/gigachat-test-out.jpg
 # lead forms (personal data)
 data/feedback-submissions.json
 data/leads-funnel.json
+data/campaigns.json

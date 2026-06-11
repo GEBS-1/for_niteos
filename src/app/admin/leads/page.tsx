@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
 import type { LeadRecord } from "@/lib/leadTypes";
 
-const TOKEN_KEY = "niteos_leads_admin_token";
+const TOKEN_KEY = "niteos_admin_token";
+const DEV_TOKEN = "local-dev-token";
 
 function formatDate(iso: string) {
   try {
@@ -21,7 +22,7 @@ function boolLabel(v: boolean | undefined) {
 }
 
 export default function AdminLeadsPage() {
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(DEV_TOKEN);
   const [leads, setLeads] = useState<LeadRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,14 +30,10 @@ export default function AdminLeadsPage() {
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("token");
     const stored = localStorage.getItem(TOKEN_KEY);
-    setToken(fromUrl ?? stored ?? "");
+    setToken(fromUrl ?? stored ?? DEV_TOKEN);
   }, []);
 
   const load = useCallback(async () => {
-    if (!token.trim()) {
-      setError("Введите токен доступа (LEADS_VIEW_TOKEN)");
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -57,77 +54,73 @@ export default function AdminLeadsPage() {
     }
   }, [token]);
 
+  useEffect(() => {
+    if (token) void load();
+  }, [token, load]);
+
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold mb-2">Воронка лидов</h1>
-      <p className="text-sm text-gray-600 mb-6">
-        Фаза 1: события visit → calculate → result_view → feedback. Экспорт:{" "}
-        <code className="text-xs bg-gray-100 px-1 rounded">npm run export:leads</code>
+    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-black bg-white">
+      <h1 className="text-2xl font-bold mb-2 text-black">Статистика по ссылкам</h1>
+      <p className="text-sm text-black mb-6">
+        Кто зашёл по ссылке, сделал расчёт, оставил заявку.{" "}
+        <a href={withBasePath("/admin/campaigns")} className="text-black underline">
+          Рассылка
+        </a>
       </p>
 
       <div className="flex flex-wrap gap-2 mb-6 items-end">
-        <label className="flex flex-col gap-1 text-sm">
-          Токен
-          <input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="border rounded px-3 py-2 min-w-[240px]"
-            placeholder="LEADS_VIEW_TOKEN"
-          />
-        </label>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="px-4 py-2 rounded bg-slate-800 text-white text-sm disabled:opacity-50"
+          className="px-4 py-2 rounded border border-black bg-white text-black text-sm hover:bg-gray-100 disabled:opacity-50"
         >
           {loading ? "Загрузка…" : "Обновить"}
         </button>
       </div>
 
       {error && (
-        <p className="text-red-600 text-sm mb-4" role="alert">
+        <p className="text-red-700 text-sm mb-4 font-medium" role="alert">
           {error}
         </p>
       )}
 
-      <p className="text-sm text-gray-600 mb-3">Всего: {leads.length}</p>
+      <p className="text-sm text-black mb-3">Всего: {leads.length}</p>
 
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-left">
+      <div className="overflow-x-auto border border-gray-300 rounded-lg bg-white">
+        <table className="min-w-full text-sm text-black">
+          <thead className="bg-white border-b border-gray-300 text-left text-black">
             <tr>
-              <th className="px-3 py-2 font-medium">leadId</th>
-              <th className="px-3 py-2 font-medium">email</th>
-              <th className="px-3 py-2 font-medium">визиты</th>
-              <th className="px-3 py-2 font-medium">расчёты</th>
-              <th className="px-3 py-2 font-medium">результат</th>
-              <th className="px-3 py-2 font-medium">форма</th>
-              <th className="px-3 py-2 font-medium">интерес</th>
-              <th className="px-3 py-2 font-medium">телефон</th>
-              <th className="px-3 py-2 font-medium">светильник</th>
-              <th className="px-3 py-2 font-medium">последний визит</th>
+              <th className="px-3 py-2 font-medium text-black">leadId</th>
+              <th className="px-3 py-2 font-medium text-black">email</th>
+              <th className="px-3 py-2 font-medium text-black">визиты</th>
+              <th className="px-3 py-2 font-medium text-black">расчёты</th>
+              <th className="px-3 py-2 font-medium text-black">результат</th>
+              <th className="px-3 py-2 font-medium text-black">форма</th>
+              <th className="px-3 py-2 font-medium text-black">интерес</th>
+              <th className="px-3 py-2 font-medium text-black">телефон</th>
+              <th className="px-3 py-2 font-medium text-black">светильник</th>
+              <th className="px-3 py-2 font-medium text-black">последний визит</th>
             </tr>
           </thead>
           <tbody>
             {leads.map((lead) => (
-              <tr key={lead.leadId} className="border-t">
-                <td className="px-3 py-2 font-mono text-xs">{lead.leadId}</td>
-                <td className="px-3 py-2">{lead.email ?? lead.contactEmail ?? "—"}</td>
-                <td className="px-3 py-2">{lead.visitCount}</td>
-                <td className="px-3 py-2">{lead.calculateCount}</td>
-                <td className="px-3 py-2">{lead.resultViewCount}</td>
-                <td className="px-3 py-2">{boolLabel(lead.feedbackSubmitted)}</td>
-                <td className="px-3 py-2">{boolLabel(lead.interested)}</td>
-                <td className="px-3 py-2">{lead.phone ?? "—"}</td>
-                <td className="px-3 py-2">{lead.lastFixtureName ?? "—"}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{formatDate(lead.lastSeen)}</td>
+              <tr key={lead.leadId} className="border-t border-gray-200">
+                <td className="px-3 py-2 font-mono text-xs text-black">{lead.leadId}</td>
+                <td className="px-3 py-2 text-black">{lead.email ?? lead.contactEmail ?? "—"}</td>
+                <td className="px-3 py-2 text-black">{lead.visitCount}</td>
+                <td className="px-3 py-2 text-black">{lead.calculateCount}</td>
+                <td className="px-3 py-2 text-black">{lead.resultViewCount}</td>
+                <td className="px-3 py-2 text-black">{boolLabel(lead.feedbackSubmitted)}</td>
+                <td className="px-3 py-2 text-black">{boolLabel(lead.interested)}</td>
+                <td className="px-3 py-2 text-black">{lead.phone ?? "—"}</td>
+                <td className="px-3 py-2 text-black">{lead.lastFixtureName ?? "—"}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-black">{formatDate(lead.lastSeen)}</td>
               </tr>
             ))}
             {!leads.length && !loading && (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-gray-500">
+                <td colSpan={10} className="px-3 py-8 text-center text-black">
                   Нет данных. Загрузите таблицу или откройте ссылку с ?lead=…
                 </td>
               </tr>

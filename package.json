@@ -16,6 +16,7 @@
     "import:catalog": "node scripts/import-catalog-photos.mjs",
     "leads:links": "node scripts/generate-lead-links.mjs",
     "export:leads": "node scripts/export-leads-csv.mjs",
+    "test:campaigns": "node scripts/test-campaigns-smoke.mjs",
     "check:api": "node scripts/check-gatellm.mjs",
     "check:gigachat": "node scripts/test-gigachat.mjs",
     "check:gigachat:visual": "node scripts/test-gigachat-visualize.mjs",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "next": "^15.3.3",
+    "nodemailer": "^8.0.11",
     "openai": "^6.41.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "autoprefixer": "^10.4.21",

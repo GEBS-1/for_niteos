@@ -38,6 +38,6 @@ $scp = "scp -i `"$Key`" -o StrictHostKeyChecking=accept-new"
 
 & scp -i $Key -o StrictHostKeyChecking=accept-new $EnvProd "${User}@${Server}:/tmp/.env.production"
 & scp -i $Key -o StrictHostKeyChecking=accept-new (Join-Path $PSScriptRoot "reg-ru-bootstrap.sh") "${User}@${Server}:/tmp/reg-ru-bootstrap.sh"
-& ssh -i $Key -o StrictHostKeyChecking=accept-new "${User}@${Server}" "bash /tmp/reg-ru-bootstrap.sh"
+& ssh -i $Key -o StrictHostKeyChecking=accept-new "${User}@${Server}" "sed -i 's/\r$//' /tmp/reg-ru-bootstrap.sh && bash /tmp/reg-ru-bootstrap.sh"
 
 Write-Host "Open: http://${Server}:3000"
