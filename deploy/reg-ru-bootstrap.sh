@@ -28,7 +28,8 @@ npm install -g pm2
 echo "==> Клонирование"
 mkdir -p "$(dirname "$APP_DIR")"
 if [[ -d "$APP_DIR/.git" ]]; then
-  cd "$APP_DIR" && git fetch origin && git checkout "$BRANCH" && git pull origin "$BRANCH"
+  cd "$APP_DIR" && git stash push -u -m "deploy-stash" 2>/dev/null || true
+  git fetch origin && git checkout "$BRANCH" && git pull origin "$BRANCH"
 else
   git clone --branch "$BRANCH" "$REPO" "$APP_DIR"
   cd "$APP_DIR"

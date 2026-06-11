@@ -18,9 +18,15 @@ const EMPTY_ROW = (): GridRow => ({ leadId: "", email: "", name: "" });
 type EnrichedRecipient = Campaign["recipients"][0] & {
   visited?: boolean;
   calculateCount?: number;
+  resultViewCount?: number;
   feedbackSubmitted?: boolean;
+  interested?: boolean;
   phone?: string;
 };
+
+function flag(ok: boolean | undefined) {
+  return ok ? "✓" : "—";
+}
 
 const labelClass = "text-sm text-black font-medium";
 const inputClass =
@@ -166,26 +172,6 @@ export default function AdminCampaignsPage() {
     }
   };
 
-  const sendReminders = async () => {
-    if (!activeId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(withBasePath(`/api/campaigns/${activeId}/reminders`), {
-        method: "POST",
-        headers: headers(),
-      });
-      if (!res.ok) throw new Error(await readApiError(res));
-      const data = await res.json();
-      setMessage(`Напоминания отправлены: ${data.sent}`);
-      await loadCampaign(activeId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const testSmtp = async () => {
     setLoading(true);
     setError(null);
@@ -256,14 +242,12 @@ export default function AdminCampaignsPage() {
         <div>
           <span className={labelClass}>Контакты</span>
           <p className={hintClass + " mt-1 mb-2"}>
-            Скопируйте из Excel (3 столбца: код, email, имя) и вставьте в таблицу — Ctrl+V.
-            Код можно оставить пустым, подставится автоматически.
+            Email и имя — вставьте из Excel (2 столбца) через Ctrl+V. Код ссылки создаётся автоматически.
           </p>
           <div className="overflow-x-auto border border-gray-300 rounded bg-white" onPaste={handleGridPaste}>
             <table className="min-w-full text-sm text-black">
               <thead className="bg-white border-b border-gray-300">
                 <tr>
-                  <th className="p-2 text-left font-medium text-black">Код (leadId)</th>
                   <th className="p-2 text-left font-medium text-black">Email</th>
                   <th className="p-2 text-left font-medium text-black">Имя</th>
                 </tr>
@@ -271,14 +255,6 @@ export default function AdminCampaignsPage() {
               <tbody>
                 {grid.map((row, i) => (
                   <tr key={i} className="border-t border-gray-200">
-                    <td className="p-1">
-                      <input
-                        value={row.leadId}
-                        onChange={(e) => updateCell(i, "leadId", e.target.value)}
-                        className="w-full px-2 py-1 border-0 bg-white text-black placeholder:text-black/40"
-                        placeholder="ivan-001"
-                      />
-                    </td>
                     <td className="p-1">
                       <input
                         value={row.email}
@@ -355,21 +331,14 @@ export default function AdminCampaignsPage() {
               </li>
             ))}
           </ul>
-          {activeId && (
-            <button
-              type="button"
-              onClick={() => void sendReminders()}
-              disabled={loading}
-              className={btnOutline}
-            >
-              Отправить напоминания (кто не зашёл / не оставил телефон)
-            </button>
-          )}
         </section>
       )}
 
       {activeId && recipients.length > 0 && (
         <section className="overflow-x-auto border border-gray-300 rounded-lg bg-white">
+          <p className="p-3 text-sm text-black border-b border-gray-200">
+            Статистика по рассылке — обновите страницу, чтобы увидеть новые действия на сайте.
+          </p>
           <table className="min-w-full text-sm text-black">
             <thead className="bg-white border-b border-gray-300">
               <tr>
@@ -377,6 +346,10 @@ export default function AdminCampaignsPage() {
                 <th className="p-2 text-left text-black">Имя</th>
                 <th className="p-2 text-black">Письмо</th>
                 <th className="p-2 text-black">Зашёл</th>
+                <th className="p-2 text-black">Расчёт</th>
+                <th className="p-2 text-black">Результат</th>
+                <th className="p-2 text-black">Форма</th>
+                <th className="p-2 text-black">Интерес</th>
                 <th className="p-2 text-black">Телефон</th>
                 <th className="p-2 text-black">Ссылка</th>
               </tr>
@@ -387,9 +360,15 @@ export default function AdminCampaignsPage() {
                   <td className="p-2 text-black">{r.email}</td>
                   <td className="p-2 text-black">{r.name || "—"}</td>
                   <td className="p-2 text-center text-black">
-                    {r.email1SentAt ? "✓" : r.email1Error ? `✗ ${r.email1Error}` : "—"}
+                    {r.email1SentAt ? "✓" : r.email1Error ? `✗` : "—"}
                   </td>
-                  <td className="p-2 text-center text-black">{r.visited ? "✓" : "—"}</td>
+                  <td className="p-2 text-center text-black">{flag(r.visited)}</td>
+                  <td className="p-2 text-center text-black">{flag((r.calculateCount ?? 0) > 0)}</td>
+                  <td className="p-2 text-center text-black">
+                    {flag((r.resultViewCount ?? 0) > 0)}
+                  </td>
+                  <td className="p-2 text-center text-black">{flag(r.feedbackSubmitted)}</td>
+                  <td className="p-2 text-center text-black">{flag(r.interested)}</td>
                   <td className="p-2 text-black">{r.phone ?? "—"}</td>
                   <td className="p-2">
                     <a href={r.link} className="text-black underline" target="_blank" rel="noreferrer">

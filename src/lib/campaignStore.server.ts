@@ -95,6 +95,7 @@ export function enrichRecipientWithLead(
 ): CampaignRecipient & {
   visited: boolean;
   calculateCount: number;
+  resultViewCount: number;
   feedbackSubmitted: boolean;
   phone?: string;
   interested?: boolean;
@@ -103,6 +104,7 @@ export function enrichRecipientWithLead(
     ...recipient,
     visited: lead?.visited ?? false,
     calculateCount: lead?.calculateCount ?? 0,
+    resultViewCount: lead?.resultViewCount ?? 0,
     feedbackSubmitted: lead?.feedbackSubmitted ?? false,
     phone: lead?.phone,
     interested: lead?.interested,

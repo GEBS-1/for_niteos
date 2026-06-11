@@ -60,9 +60,9 @@ async function api(path, opts = {}) {
 console.log(`\nCampaign smoke test → ${BASE}\n`);
 
 // 1. Парсинг Excel
-const pasted = parseExcelPaste("ivan-001\ttest@example.com\tИван\n\tbad-email\t\n");
-if (pasted.length === 2 && pasted[0].email === "test@example.com") {
-  ok("parseExcelPaste (tab-separated)");
+const pasted = parseExcelPaste("test@example.com\tИван\nbad@example.com\tПётр");
+if (pasted.length === 2 && pasted[0].email === "test@example.com" && pasted[0].name === "Иван") {
+  ok("parseExcelPaste (email + имя)");
 } else {
   fail("parseExcelPaste", JSON.stringify(pasted));
 }
