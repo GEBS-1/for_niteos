@@ -8,10 +8,8 @@ import {
   type Campaign,
   type CampaignTemplates,
 } from "@/lib/campaignTypes";
+import { adminTokenHint, resolveAdminToken } from "@/lib/adminToken.client";
 import { parseExcelPaste, type GridRow } from "@/lib/contactsGrid.shared";
-
-const TOKEN_KEY = "niteos_admin_token";
-const DEV_TOKEN = "local-dev-token";
 
 const EMPTY_ROW = (): GridRow => ({ leadId: "", email: "", name: "" });
 
@@ -36,6 +34,9 @@ const btnOutline =
   "px-3 py-1.5 border border-black rounded text-sm text-black bg-white hover:bg-gray-100 disabled:opacity-50";
 
 async function readApiError(res: Response): Promise<string> {
+  if (res.status === 401) {
+    return "Доступ запрещён — откройте страницу с ?token=ВАШ_ТОКЕН в адресе";
+  }
   const text = await res.text();
   try {
     const data = JSON.parse(text) as { error?: string };
@@ -49,7 +50,7 @@ async function readApiError(res: Response): Promise<string> {
 }
 
 export default function AdminCampaignsPage() {
-  const [token, setToken] = useState(DEV_TOKEN);
+  const [token, setToken] = useState("");
   const [siteUrl, setSiteUrl] = useState("");
   const [smtpOk, setSmtpOk] = useState<boolean | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -64,9 +65,7 @@ export default function AdminCampaignsPage() {
   const [templates, setTemplates] = useState<CampaignTemplates>(DEFAULT_CAMPAIGN_TEMPLATES);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("token");
-    const stored = localStorage.getItem(TOKEN_KEY);
-    setToken(fromUrl ?? stored ?? DEV_TOKEN);
+    setToken(resolveAdminToken());
   }, []);
 
   const headers = useCallback(
@@ -87,7 +86,6 @@ export default function AdminCampaignsPage() {
       setCampaigns(data.campaigns ?? []);
       setSmtpOk(data.smtpConfigured ?? false);
       if (data.siteUrl) setSiteUrl(data.siteUrl);
-      localStorage.setItem(TOKEN_KEY, token.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
     } finally {
@@ -96,7 +94,11 @@ export default function AdminCampaignsPage() {
   }, [token, headers]);
 
   useEffect(() => {
-    if (token) void loadList();
+    if (!token) {
+      setError(adminTokenHint() || "Нет токена доступа");
+      return;
+    }
+    void loadList();
   }, [token, loadList]);
 
   const loadCampaign = useCallback(

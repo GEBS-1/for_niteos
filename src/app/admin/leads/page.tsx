@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { withBasePath } from "@/lib/basePath";
+import { adminTokenHint, resolveAdminToken } from "@/lib/adminToken.client";
 import type { LeadRecord } from "@/lib/leadTypes";
-
-const TOKEN_KEY = "niteos_admin_token";
-const DEV_TOKEN = "local-dev-token";
 
 function formatDate(iso: string) {
   try {
@@ -22,15 +20,13 @@ function boolLabel(v: boolean | undefined) {
 }
 
 export default function AdminLeadsPage() {
-  const [token, setToken] = useState(DEV_TOKEN);
+  const [token, setToken] = useState("");
   const [leads, setLeads] = useState<LeadRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("token");
-    const stored = localStorage.getItem(TOKEN_KEY);
-    setToken(fromUrl ?? stored ?? DEV_TOKEN);
+    setToken(resolveAdminToken());
   }, []);
 
   const load = useCallback(async () => {
@@ -45,7 +41,6 @@ export default function AdminLeadsPage() {
         throw new Error(data.error ?? "Ошибка загрузки");
       }
       setLeads(data.leads ?? []);
-      localStorage.setItem(TOKEN_KEY, token.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
       setLeads([]);
@@ -55,7 +50,11 @@ export default function AdminLeadsPage() {
   }, [token]);
 
   useEffect(() => {
-    if (token) void load();
+    if (!token) {
+      setError(adminTokenHint() || "Нет токена доступа");
+      return;
+    }
+    void load();
   }, [token, load]);
 
   return (

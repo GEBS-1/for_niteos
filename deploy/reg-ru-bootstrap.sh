@@ -51,6 +51,7 @@ export NODE_ENV=production
 export NODE_OPTIONS="--max-old-space-size=1536"
 npm ci
 npm run build
+node scripts/prepare-standalone.mjs
 
 echo "==> PM2"
 pm2 delete niteos 2>/dev/null || true
