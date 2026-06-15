@@ -39,6 +39,7 @@ export async function sendCampaignInitial(campaignId: string): Promise<SendBatch
       const msg = e instanceof Error ? e.message : String(e);
       recipient.email1Error = msg;
       result.errors.push({ leadId: recipient.leadId, error: msg });
+      console.error(`[campaign] email failed ${recipient.email}:`, msg);
     }
   }
 

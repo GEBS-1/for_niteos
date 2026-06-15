@@ -20,14 +20,13 @@ export async function POST(request: NextRequest) {
     await sendEmail({
       to,
       subject: "NITEOS — тест SMTP",
-      text: "Письмо отправлено с локального конфигуратора. SMTP работает.",
+      text: "Письмо отправлено с конфигуратора NITEOS. SMTP работает.",
     });
 
     return NextResponse.json({ ok: true, to });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Ошибка SMTP" },
-      { status: 500 }
-    );
+    const msg = e instanceof Error ? e.message : "Ошибка SMTP";
+    console.error("[test-smtp]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

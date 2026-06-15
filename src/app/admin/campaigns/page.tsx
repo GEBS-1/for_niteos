@@ -171,10 +171,13 @@ export default function AdminCampaignsPage() {
       if (!res.ok) throw new Error(await readApiError(res));
       const data = await res.json();
       const sent = data.sendResult?.sent ?? 0;
-      const errs = data.sendResult?.errors?.length ?? 0;
+      const errs = data.sendResult?.errors ?? [];
+      if (errs.length > 0) {
+        setError(errs.map((x: { email?: string; error: string; leadId: string }) => `${x.leadId}: ${x.error}`).join(" · "));
+      }
       setMessage(
-        errs > 0
-          ? `Отправлено: ${sent}, ошибок: ${errs}. Смотрите таблицу ниже.`
+        errs.length > 0
+          ? `Отправлено: ${sent}, ошибок: ${errs.length}. Смотрите колонку «Ошибка» ниже.`
           : `Готово: «${name}» — отправлено писем: ${sent}`
       );
       setName("");
@@ -227,8 +230,13 @@ export default function AdminCampaignsPage() {
         <strong className="text-black">{"{имя}"}</strong> и{" "}
         <strong className="text-black">{"{ссылка}"}</strong>.
         {smtpOk === false && " — почта НЕ настроена на сервере (SMTP в .env.production)."}
-        {smtpOk === true && " — почта подключена."}
+        {smtpOk === true && " — почта подключена (логин/пароль заданы)."}
         {smtpOk === null && token && " — загрузка…"}
+      </p>
+      <p className="text-xs text-black border border-amber-400 bg-amber-50 rounded p-2">
+        Если на VPS письма не уходят (Connection timeout) — хостинг блокирует Gmail SMTP.
+        Варианты: попросить REG.RU открыть порт 587, или рассылать с{" "}
+        <strong>localhost:3000/admin/campaigns</strong> (с тем же .env.local) — ссылки всё равно ведут на сервер.
       </p>
 
       <div className="flex gap-2">
@@ -381,6 +389,7 @@ export default function AdminCampaignsPage() {
                 <th className="p-2 text-left text-black">Email</th>
                 <th className="p-2 text-left text-black">Имя</th>
                 <th className="p-2 text-black">Письмо</th>
+                <th className="p-2 text-left text-black">Ошибка</th>
                 <th className="p-2 text-black">Зашёл</th>
                 <th className="p-2 text-black">Расчёт</th>
                 <th className="p-2 text-black">Результат</th>
@@ -396,7 +405,10 @@ export default function AdminCampaignsPage() {
                   <td className="p-2 text-black">{r.email}</td>
                   <td className="p-2 text-black">{r.name || "—"}</td>
                   <td className="p-2 text-center text-black">
-                    {r.email1SentAt ? "✓" : r.email1Error ? `✗` : "—"}
+                    {r.email1SentAt ? "✓" : r.email1Error ? "✗" : "—"}
+                  </td>
+                  <td className="p-2 text-black text-xs max-w-xs">
+                    {r.email1Error ?? "—"}
                   </td>
                   <td className="p-2 text-center text-black">{flag(r.visited)}</td>
                   <td className="p-2 text-center text-black">{flag((r.calculateCount ?? 0) > 0)}</td>
