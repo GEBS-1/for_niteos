@@ -135,9 +135,23 @@ export default function AdminCampaignsPage() {
     });
   };
 
+  const hasValidEmail = grid.some((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email.trim()));
+
   const createAndSend = async () => {
+    if (!token.trim()) {
+      setError(adminTokenHint() || "Нет токена — откройте страницу с ?token=...");
+      return;
+    }
     if (!name.trim()) {
       setError("Укажите название рассылки");
+      return;
+    }
+    if (!hasValidEmail) {
+      setError("Добавьте хотя бы один корректный email в таблицу");
+      return;
+    }
+    if (smtpOk === false) {
+      setError("Почта не настроена на сервере (SMTP_USER, SMTP_PASS в .env.production)");
       return;
     }
     setLoading(true);
@@ -212,8 +226,9 @@ export default function AdminCampaignsPage() {
         <strong className="text-black">{siteUrl || "…"}</strong>. В тексте письма используйте{" "}
         <strong className="text-black">{"{имя}"}</strong> и{" "}
         <strong className="text-black">{"{ссылка}"}</strong>.
-        {smtpOk === false && " — настройте Gmail в .env.local (SMTP_USER, SMTP_PASS)."}
+        {smtpOk === false && " — почта НЕ настроена на сервере (SMTP в .env.production)."}
         {smtpOk === true && " — почта подключена."}
+        {smtpOk === null && token && " — загрузка…"}
       </p>
 
       <div className="flex gap-2">
@@ -309,11 +324,30 @@ export default function AdminCampaignsPage() {
         <button
           type="button"
           onClick={() => void createAndSend()}
-          disabled={loading || smtpOk === false}
-          className="px-5 py-2.5 bg-blue-700 text-white rounded font-medium disabled:opacity-50 !text-white"
+          disabled={loading || !token || smtpOk === false}
+          className="px-5 py-2.5 bg-blue-700 rounded font-medium disabled:opacity-50 !text-white"
+          title={
+            !token
+              ? "Откройте админку с ?token=..."
+              : smtpOk === false
+                ? "SMTP не настроен"
+                : !hasValidEmail
+                  ? "Добавьте email"
+                  : undefined
+          }
         >
           {loading ? "Отправка…" : "Создать и отправить"}
         </button>
+        {!token && (
+          <p className="text-sm text-red-700 font-medium">
+            Нет доступа — откройте: ?token=ВАШ_ТОКЕН (из .env.production на сервере)
+          </p>
+        )}
+        {token && smtpOk === false && (
+          <p className="text-sm text-red-700 font-medium">
+            Кнопка неактивна: на сервере не заданы SMTP_USER и SMTP_PASS
+          </p>
+        )}
       </section>
 
       {campaigns.length > 0 && (

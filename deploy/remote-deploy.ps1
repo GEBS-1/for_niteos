@@ -30,11 +30,8 @@ if (Test-Path $EnvLocal) {
     if ($_ -notmatch '^LEADS_VIEW_TOKEN=') { $lines += $_ }
   }
 }
-$lines | Set-Content $EnvProd -Encoding utf8
+$lines | Set-Content $EnvProd -Encoding utf8NoBOM
 Write-Host "LEADS_VIEW_TOKEN (save this): $token"
-
-$ssh = "ssh -i `"$Key`" -o StrictHostKeyChecking=accept-new ${User}@${Server}"
-$scp = "scp -i `"$Key`" -o StrictHostKeyChecking=accept-new"
 
 & scp -i $Key -o StrictHostKeyChecking=accept-new $EnvProd "${User}@${Server}:/tmp/.env.production"
 & scp -i $Key -o StrictHostKeyChecking=accept-new (Join-Path $PSScriptRoot "reg-ru-bootstrap.sh") "${User}@${Server}:/tmp/reg-ru-bootstrap.sh"
