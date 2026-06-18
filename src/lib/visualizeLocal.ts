@@ -7,6 +7,7 @@ import {
   resolvePlacementImageRole,
 } from "./fixtureAssets";
 import { buildRibbonComposites, ribbonGlowSvg } from "./ribbonRender";
+import { getFixturePlacementProfile, type GlowMode } from "./fixturePlacementProfile";
 import type { PipelineLogger } from "./pipelineLog";
 import type {
   Fixture,
@@ -31,27 +32,144 @@ function glowSvgOverlay(
     })
     .join("");
 
+  return glowSvgBase(width, height, spots);
+}
+
+/** Широкая заливка прожектора — крупные мягкие эллипсы с перекрытием */
+function wideWashGlowSvg(
+  width: number,
+  height: number,
+  placements: FixturePlacement[],
+  intensity: number
+): string {
+  const spots = placements
+    .map((p) => {
+      const cx = p.x * width;
+      const cy = p.y * height;
+      const rx = Math.max(90, (p.widthPx ?? 60) * 3.2 * intensity);
+      const ry = Math.max(70, (p.heightPx ?? 40) * 5 * intensity);
+      return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#warmGlow)" opacity="${0.32 * intensity}"/>`;
+    })
+    .join("");
+  return glowSvgBase(width, height, spots);
+}
+
+/** Узкий акцентный луч */
+function tightSpotGlowSvg(
+  width: number,
+  height: number,
+  placements: FixturePlacement[],
+  intensity: number
+): string {
+  const spots = placements
+    .map((p) => {
+      const cx = p.x * width;
+      const cy = p.y * height;
+      const r = Math.max(22, (p.widthPx ?? 30) * 0.9);
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#warmGlow)" opacity="${0.55 * intensity}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r * 2.2}" fill="url(#warmGlow)" opacity="${0.18 * intensity}"/>`;
+    })
+    .join("");
+  return glowSvgBase(width, height, spots, false);
+}
+
+/** Мягкая подсветка оконных проёмов */
+function windowSoftGlowSvg(
+  width: number,
+  height: number,
+  placements: FixturePlacement[],
+  intensity: number
+): string {
+  const spots = placements
+    .map((p) => {
+      const cx = p.x * width;
+      const cy = p.y * height;
+      const rw = Math.max(36, (p.widthPx ?? 40) * 1.1);
+      const rh = Math.max(10, (p.heightPx ?? 12) * 0.8);
+      return `<rect x="${cx - rw / 2}" y="${cy - rh / 2}" width="${rw}" height="${rh}" rx="3"
+        fill="url(#warmGlow)" opacity="${0.38 * intensity}"/>`;
+    })
+    .join("");
+  return glowSvgBase(width, height, spots, false);
+}
+
+/** Заливка фасада от опор на земле */
+function poleUplightGlowSvg(
+  width: number,
+  height: number,
+  placements: FixturePlacement[],
+  facadeBox: PlacementScheme["facadeBox"],
+  intensity: number
+): string {
+  const fb = facadeBox;
+  const fx = fb.x * width;
+  const fy = fb.y * height;
+  const fw = fb.width * width;
+  const fh = fb.height * height;
+  const uplight = `<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="url(#uplight)" opacity="${0.55 * intensity}"/>`;
+  const poleSpots = placements
+    .map((p) => {
+      const cx = p.x * width;
+      const cy = p.y * height;
+      const r = Math.max(30, (p.widthPx ?? 36) * 1.2);
+      return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#warmGlow)" opacity="${0.5 * intensity}"/>`;
+    })
+    .join("");
+  return glowSvgBase(width, height, uplight + poleSpots, true);
+}
+
+function glowSvgBase(
+  width: number,
+  height: number,
+  inner: string,
+  withUplight = true
+): string {
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <radialGradient id="warmGlow">
-        <stop offset="0%" stop-color="rgba(255,200,120,0.9)"/>
-        <stop offset="45%" stop-color="rgba(255,160,60,0.35)"/>
+        <stop offset="0%" stop-color="rgba(255,200,120,0.72)"/>
+        <stop offset="45%" stop-color="rgba(255,160,60,0.24)"/>
         <stop offset="100%" stop-color="rgba(255,120,40,0)"/>
       </radialGradient>
       <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="rgba(5,15,40,0.12)"/>
-        <stop offset="100%" stop-color="rgba(5,15,40,0.5)"/>
+        <stop offset="0%" stop-color="rgba(5,15,40,0.1)"/>
+        <stop offset="100%" stop-color="rgba(5,15,40,0.38)"/>
       </linearGradient>
       <linearGradient id="uplight" x1="0" y1="1" x2="0" y2="0">
-        <stop offset="0%" stop-color="rgba(255,180,80,0.28)"/>
-        <stop offset="55%" stop-color="rgba(255,200,120,0.06)"/>
+        <stop offset="0%" stop-color="rgba(255,180,80,0.18)"/>
+        <stop offset="55%" stop-color="rgba(255,200,120,0.04)"/>
         <stop offset="100%" stop-color="rgba(255,200,120,0)"/>
       </linearGradient>
     </defs>
     <rect width="100%" height="100%" fill="url(#vignette)"/>
-    <rect x="${width * 0.06}" y="${height * 0.08}" width="${width * 0.88}" height="${height * 0.88}" fill="url(#uplight)" opacity="0.65"/>
-    ${spots}
+    ${withUplight ? `<rect x="${width * 0.06}" y="${height * 0.08}" width="${width * 0.88}" height="${height * 0.88}" fill="url(#uplight)" opacity="0.42"/>` : ""}
+    ${inner}
   </svg>`;
+}
+
+function buildGlowSvg(
+  glowMode: GlowMode,
+  width: number,
+  height: number,
+  placement: PlacementScheme,
+  intensity: number
+): string {
+  const { fixtures, mountLines, facadeBox } = placement;
+  switch (glowMode) {
+    case "ribbon":
+    case "contour_ribbon":
+      return ribbonGlowSvg(width, height, mountLines ?? [], intensity);
+    case "wide_wash":
+      return wideWashGlowSvg(width, height, fixtures, intensity);
+    case "tight_spot":
+      return tightSpotGlowSvg(width, height, fixtures, intensity);
+    case "window_soft":
+      return windowSoftGlowSvg(width, height, fixtures, intensity);
+    case "pole_uplight":
+      return poleUplightGlowSvg(width, height, fixtures, facadeBox, intensity);
+    default:
+      return glowSvgOverlay(width, height, fixtures, intensity);
+  }
 }
 
 function placementMarkersSvg(
@@ -157,9 +275,9 @@ export async function renderLocalVisualization(
   });
 
   const eveningBase = await sharp(imageBuffer)
-    .modulate({ brightness: 0.48, saturation: 0.92 })
-    .linear(1.08, -22)
-    .tint({ r: 30, g: 45, b: 90 })
+    .modulate({ brightness: 0.58, saturation: 0.82 })
+    .linear(1.02, -16)
+    .tint({ r: 28, g: 40, b: 78 })
     .toBuffer();
 
   const role = resolvePlacementImageRole(fixture, fixture.mountType ?? "facade");
@@ -190,11 +308,15 @@ export async function renderLocalVisualization(
   };
 
   const composites: { input: Buffer; top: number; left: number }[] = [];
-  const isLinearFixture =
-    fixture.category === "linear_facade" || fixture.mountType === "linear";
+  const profile = getFixturePlacementProfile(fixture);
   const hasMountLines = (placement.mountLines?.length ?? 0) > 0;
-  const useRibbonBodies = display.showBodies && isLinearFixture && hasMountLines;
-  const useRibbonGlow = display.showGlow && isLinearFixture && hasMountLines;
+  const useRibbonBodies =
+    display.showBodies && profile.useRibbonBodies && hasMountLines;
+  const useRibbonGlow =
+    display.showGlow &&
+    profile.useRibbonGlow &&
+    hasMountLines &&
+    (profile.glowMode === "ribbon" || profile.glowMode === "contour_ribbon");
 
   if (useRibbonBodies && fixtureFileExists) {
     try {
@@ -217,7 +339,8 @@ export async function renderLocalVisualization(
         width,
         height,
         "linear",
-        display
+        display,
+        profile.placementMode === "contour_perimeter"
       );
       composites.push(...ribbonTiles);
       report.pngComposited = ribbonTiles.length;
@@ -307,10 +430,10 @@ export async function renderLocalVisualization(
     });
   }
   if (display.showGlow) {
-    const glowIntensity = isDemo ? 1.0 : 1.35;
+    const glowIntensity = isDemo ? 0.9 : 1.05;
     const glowSvg = useRibbonGlow
       ? ribbonGlowSvg(width, height, placement.mountLines!, glowIntensity)
-      : glowSvgOverlay(width, height, placement.fixtures, glowIntensity);
+      : buildGlowSvg(profile.glowMode, width, height, placement, glowIntensity);
     const glowRaster = await sharp(Buffer.from(glowSvg), { density: 144 })
       .resize(width, height)
       .png()

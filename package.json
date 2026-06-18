@@ -14,6 +14,7 @@
     "test:kazan": "node scripts/test-kazan.mjs",
     "test:e2e": "node scripts/test-pipeline-e2e.mjs",
     "test:placement": "node scripts/test-placement.mjs",
+    "test:profiles": "npx tsx scripts/test-fixture-profiles.ts",
     "import:catalog": "node scripts/import-catalog-photos.mjs",
     "leads:links": "node scripts/generate-lead-links.mjs",
     "export:leads": "node scripts/export-leads-csv.mjs",

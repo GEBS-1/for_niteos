@@ -30,7 +30,11 @@ if (Test-Path $EnvLocal) {
     if ($_ -notmatch '^LEADS_VIEW_TOKEN=') { $lines += $_ }
   }
 }
-$lines | Set-Content $EnvProd -Encoding utf8NoBOM
+[System.IO.File]::WriteAllLines(
+  $EnvProd,
+  $lines,
+  (New-Object System.Text.UTF8Encoding($false))
+)
 Write-Host "LEADS_VIEW_TOKEN (save this): $token"
 
 & scp -i $Key -o StrictHostKeyChecking=accept-new $EnvProd "${User}@${Server}:/tmp/.env.production"

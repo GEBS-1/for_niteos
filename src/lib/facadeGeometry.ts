@@ -1,5 +1,7 @@
+import { getFixturePlacementProfile } from "@/lib/fixturePlacementProfile";
 import type {
   FacadeDetection,
+  Fixture,
   LightingType,
   MountLine,
   MountTarget,
@@ -239,6 +241,115 @@ export function resolveAccentMountLines(
   return segments.slice(0, maxSegments);
 }
 
+/** Контур здания: карниз, вертикали углов, цоколь */
+export function resolveContourMountLines(
+  box: NormalizedBox,
+  detected: MountLine[]
+): MountLine[] {
+  const left = box.x;
+  const right = box.x + box.width;
+  const top = box.y + box.height * 0.06;
+  const bottom = box.y + box.height * 0.94;
+
+  const horizDetected = detected
+    .filter(isMostlyHorizontal)
+    .map((ml) => clampMountLineToBox(ml, box))
+    .filter((ml) => horizontalSpan(ml) >= box.width * 0.35);
+
+  const cornice =
+    horizDetected.find((ml) => lineCenterY(ml) < box.y + box.height * 0.2) ??
+    bandAtY(box, box.y + box.height * 0.08, "contour-cornice", "Верхний контур");
+
+  const base =
+    horizDetected.find((ml) => lineCenterY(ml) > box.y + box.height * 0.75) ??
+    bandAtY(box, box.y + box.height * 0.92, "contour-base", "Нижний контур");
+
+  const vertDetected = detected
+    .filter((ml) => !isMostlyHorizontal(ml))
+    .map((ml) => clampMountLineToBox(ml, box));
+
+  const leftEdge =
+    vertDetected.find((ml) => (ml.x1 + ml.x2) / 2 < box.x + box.width * 0.15) ?? {
+      id: "contour-left",
+      x1: left + box.width * 0.02,
+      y1: top,
+      x2: left + box.width * 0.02,
+      y2: bottom,
+      label: "Левый контур",
+    };
+
+  const rightEdge =
+    vertDetected.find((ml) => (ml.x1 + ml.x2) / 2 > box.x + box.width * 0.85) ?? {
+      id: "contour-right",
+      x1: right - box.width * 0.02,
+      y1: top,
+      x2: right - box.width * 0.02,
+      y2: bottom,
+      label: "Правый контур",
+    };
+
+  return [cornice, leftEdge, rightEdge, base];
+}
+
+/** Заливка прожекторами: 2–3 горизонтальные зоны, без плотной ленты */
+export function resolveFloodMountLines(
+  box: NormalizedBox,
+  detected: MountLine[],
+  minBands = 2,
+  maxBands = 3
+): MountLine[] {
+  return resolveLinearMountLines(box, detected, minBands, maxBands);
+}
+
+/** Оконная подсветка: короткие сегменты в сетке проёмов */
+export function resolveWindowMountLines(
+  box: NormalizedBox,
+  detected: MountLine[],
+  maxSegments = 40
+): MountLine[] {
+  const minShortSpan = box.width * 0.04;
+  const top = box.y + box.height * 0.1;
+  const bottom = box.y + box.height * 0.9;
+
+  let segments = detected
+    .filter(isMostlyHorizontal)
+    .map((ml) => clampMountLineToBox(ml, box))
+    .filter((ml) => {
+      const span = horizontalSpan(ml);
+      const y = lineCenterY(ml);
+      return y >= top && y <= bottom && span >= minShortSpan && span <= box.width * 0.22;
+    });
+
+  if (segments.length < 6) {
+    const cols = 5;
+    const rows = 4;
+    segments = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const colW = box.width / cols;
+        const rowH = box.height / rows;
+        const x1 = box.x + c * colW + colW * 0.12;
+        const x2 = box.x + (c + 1) * colW - colW * 0.12;
+        const rowY = box.y + r * rowH;
+        for (const band of ["top", "bottom"] as const) {
+          const y =
+            band === "top" ? rowY + rowH * 0.22 : rowY + rowH * 0.78;
+          segments.push({
+            id: `win-${r}-${c}-${band}`,
+            x1,
+            y1: y,
+            x2,
+            y2: y,
+            label: `окно ${r + 1}-${c + 1} ${band}`,
+          });
+        }
+      }
+    }
+  }
+
+  return segments.slice(0, maxSegments);
+}
+
 export function buildGroundFrontLine(box: NormalizedBox): MountLine {
   const bottom = box.y + box.height;
   const groundY = Math.min(0.97, bottom + 0.03);
@@ -255,19 +366,22 @@ export function buildGroundFrontLine(box: NormalizedBox): MountLine {
 export interface NormalizeDetectionOptions {
   lightingType?: LightingType;
   mountTarget?: MountTarget;
+  fixture?: Fixture;
 }
 
 /**
  * Единая пост-обработка детекции для любого фото (AI или mock).
- * 1) поджать бокс  2) отфильтровать линии  3) собрать пояса для линейного типа
+ * 1) поджать бокс  2) отфильтровать линии  3) собрать линии по профилю светильника
  */
 export function normalizeFacadeDetection(
   raw: FacadeDetection,
   options: NormalizeDetectionOptions = {}
 ): FacadeDetection {
-  const { lightingType, mountTarget } = options;
+  const { lightingType, mountTarget, fixture } = options;
   const isNearby = mountTarget === "nearby";
-  const isLinear = !isNearby && lightingType === "линейная";
+  const profile = fixture
+    ? getFixturePlacementProfile(fixture, lightingType)
+    : null;
 
   let box = tightenFacadeBox(raw.facadeBox, raw.mountLines);
   let mountLines = raw.mountLines.map((ml) => clampMountLineToBox(ml, box));
@@ -280,16 +394,44 @@ export function normalizeFacadeDetection(
     };
   }
 
+  const mode = profile?.placementMode;
+  const isLinear =
+    !isNearby &&
+    (mode === "linear_ribbon" ||
+      mode === "linear_accent" ||
+      (!profile && lightingType === "линейная"));
+
   if (isLinear) {
-    mountLines = resolveLinearMountLines(box, mountLines);
+    const min = profile?.minBands ?? 4;
+    const max = profile?.maxBands ?? 6;
+    mountLines = resolveLinearMountLines(box, mountLines, min, max);
     box = tightenFacadeBox(box, mountLines);
     mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (lightingType === "акцентная") {
+  } else if (
+    mode === "contour_perimeter" ||
+    (!profile && lightingType === "контурная")
+  ) {
+    mountLines = resolveContourMountLines(box, mountLines);
+    box = tightenFacadeBox(box, mountLines);
+    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
+  } else if (mode === "window_reveal" || (!profile && lightingType === "оконная")) {
+    mountLines = resolveWindowMountLines(box, mountLines);
+    box = tightenFacadeBox(box, mountLines);
+    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
+  } else if (
+    mode === "flood_wash" ||
+    (!profile && lightingType === "заливная" && mountTarget === "facade")
+  ) {
+    const min = profile?.minBands ?? 2;
+    const max = profile?.maxBands ?? 3;
+    mountLines = resolveFloodMountLines(box, mountLines, min, max);
+    box = tightenFacadeBox(box, mountLines);
+    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
+  } else if (
+    mode === "accent_points" ||
+    (!profile && lightingType === "акцентная")
+  ) {
     mountLines = resolveAccentMountLines(box, mountLines);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (lightingType === "заливная" && mountTarget === "facade") {
-    mountLines = resolveLinearMountLines(box, mountLines, 2, 4);
     box = tightenFacadeBox(box, mountLines);
     mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
   } else {
@@ -299,7 +441,7 @@ export function normalizeFacadeDetection(
   }
 
   if (mountLines.length === 0 && isLinear) {
-    mountLines = evenHorizontalBandsInBox(box, 5);
+    mountLines = evenHorizontalBandsInBox(box, profile?.minBands ?? 5);
   }
 
   return {

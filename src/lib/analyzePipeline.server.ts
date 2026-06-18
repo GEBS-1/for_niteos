@@ -38,6 +38,10 @@ export async function runAnalyzePipelineAsync(
       buildFacadeAnalysisLegacy({ ...params, lightingType: undefined })
     );
   const mountTarget = selectedPrompt?.mountTarget ?? "facade";
+  const fixture =
+    (params.fixtureId
+      ? CATALOG.find((f) => f.id === params.fixtureId)
+      : undefined) ?? CATALOG[0];
 
   let detectionInput: PipelineDetectionInput | undefined;
 
@@ -46,7 +50,8 @@ export async function runAnalyzePipelineAsync(
     const { detection, source } = await resolveFacadeDetection(
       params.imageDataUrl,
       lightingType,
-      mountTarget
+      mountTarget,
+      fixture
     );
     detectionInput = { detection, source };
     logger.log("vision", `detection result: ${source}`, {

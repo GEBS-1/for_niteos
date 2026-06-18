@@ -138,7 +138,7 @@ export function runAnalyzePipelineSync(
   const { detection, source } = detectionInput ?? {
     detection: normalizeFacadeDetection(
       buildMockFacadeDetection(lightingType, mountTarget),
-      { lightingType, mountTarget }
+      { lightingType, mountTarget, fixture }
     ),
     source: "mock" as const,
   };
@@ -207,9 +207,11 @@ export function runAnalyzePipelineSync(
 
   const calculations = {} as Record<LightingType, CalculationResult>;
   for (const opt of LIGHTING_OPTIONS) {
+    const f =
+      CATALOG.find((x) => x.type.includes(opt.value)) ?? fixture;
     const det = normalizeFacadeDetection(
       buildMockFacadeDetection(opt.value, mountTarget),
-      { lightingType: opt.value, mountTarget }
+      { lightingType: opt.value, mountTarget, fixture: f }
     );
     const sc = computePxPerMeter(
       params.dimensions,
@@ -220,15 +222,13 @@ export function runAnalyzePipelineSync(
     const { placement: pl, zoneLengthM: zl } = placeFixturesAlongMountLines({
       detection: det,
       scale: sc,
-      fixture: CATALOG.find((f) => f.type.includes(opt.value)) ?? fixture,
+      fixture: f,
       mountTarget,
       lightingType: opt.value,
       imageWidth: params.imageWidth,
       imageHeight: params.imageHeight,
       dimensions: params.dimensions,
     });
-    const f =
-      CATALOG.find((x) => x.type.includes(opt.value)) ?? fixture;
     calculations[opt.value] = buildCalculationFromPlacement(
       f,
       opt.value,

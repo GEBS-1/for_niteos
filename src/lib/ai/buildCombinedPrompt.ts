@@ -1,4 +1,9 @@
 import { CATALOG } from "@/lib/catalog";
+import {
+  buildFixtureSizePrompt,
+  buildLightCharacterPrompt,
+  getFixturePlacementProfile,
+} from "@/lib/fixturePlacementProfile";
 import { isParkPoleFixture } from "@/lib/fixtureMount";
 import type { BuildingDimensions, FacadeAnalysis, CalculationResult } from "../types";
 
@@ -39,6 +44,116 @@ export function buildLightOnlyPrompt(): string {
   ].join("\n");
 }
 
+function forbiddenRules(
+  profile: ReturnType<typeof getFixturePlacementProfile>,
+  parkPole: boolean
+): string[] {
+  if (parkPole) {
+    return [
+      "- ЗАПРЕЩЕНО: низкие болларды, мини-фонари, другой тип опор; менять количество опор",
+    ];
+  }
+  const rules = [
+    "- ЗАПРЕЩЕНО: добавлять новые уличные фонари (кроме явно выбранных опор NT-park)",
+  ];
+  switch (profile.placementMode) {
+    case "flood_wash":
+      rules.push(
+        "- ЗАПРЕЩЕНО: сплошные горизонтальные LED-полосы, линейные пояса по всему фасаду, тонкие LED-нити без корпуса"
+      );
+      break;
+    case "accent_points":
+      rules.push(
+        "- ЗАПРЕЩЕНО: сплошные горизонтальные пояса, непрерывные линейные полосы, заливка всего фасада равномерной лентой"
+      );
+      break;
+    case "linear_ribbon":
+    case "linear_accent":
+      rules.push(
+        "- ЗАПРЕЩЕНО: мелкие точечные прожекторы, V-образные uplight между колоннами, тонкие LED-нити без корпуса"
+      );
+      break;
+    case "contour_perimeter":
+      rules.push(
+        "- ЗАПРЕЩЕНО: горизонтальные пояса по всей ширине фасада (кроме карниза-контура), заливка всей стены прожекторами"
+      );
+      break;
+    case "window_reveal":
+      rules.push(
+        "- ЗАПРЕЩЕНО: сплошные горизонтальные пояса по этажам, прожекторная заливка всего фасада"
+      );
+      break;
+    default:
+      rules.push(
+        "- ЗАПРЕЩЕНО: мелкие точечные прожекторы вне схемы, тонкие LED-нити без корпуса"
+      );
+  }
+  return rules;
+}
+
+function taskLine(
+  target: PromptTarget,
+  qty: number,
+  profile: ReturnType<typeof getFixturePlacementProfile>,
+  parkPole: boolean
+): string {
+  if (target === "openai_edit") {
+    if (parkPole) {
+      return `ЗАДАЧА: отредактировать подготовленное фото. На площадке перед фасадом уже размечены РОВНО ${qty} опор — превратить в реалистичный вечер. Сохранить число, позиции и высоту опор.`;
+    }
+    switch (profile.placementMode) {
+      case "linear_ribbon":
+      case "linear_accent":
+        return "ЗАДАЧА: отредактировать подготовленное фото. На фасаде размечены линии монтажа — превратить их в реалистичный вечерний свет. Линии только НА стене здания, не в небе.";
+      case "contour_perimeter":
+        return "ЗАДАЧА: отредактировать фото. Контурные линии по карнизу и краям силуэта — реалистичный вечерний контурный свет по разметке.";
+      case "flood_wash":
+        return `ЗАДАЧА: отредактировать фото. На фасаде размечены РОВНО ${qty} прожектора — широкая мягкая заливка от каждого корпуса. Без сплошных LED-полос.`;
+      case "accent_points":
+        return `ЗАДАЧА: отредактировать фото. Размечены ${qty} точечных акцента — узкие пучки только в этих местах. Без горизонтальных поясов.`;
+      case "window_reveal":
+        return "ЗАДАЧА: отредактировать фото. Подсветка оконных проёмов по разметке — мягкий свет в верхней и нижней части каждого окна.";
+      default:
+        return "ЗАДАЧА: отредактировать подготовленное фото по разметке светильников NITEOS.";
+    }
+  }
+  if (parkPole) {
+    return `ЗАДАЧА: фотореалистичное здание вечером с ${qty} высокими опорами NT-park STEP перед фасадом.`;
+  }
+  return "ЗАДАЧА: фотореалистичное изображение здания с архитектурной подсветкой NITEOS вечером.";
+}
+
+function placementRule(
+  profile: ReturnType<typeof getFixturePlacementProfile>,
+  usage: { lightingType: string; mountTarget: string; title: string },
+  qty: number,
+  fixtureName: string,
+  stepM: number,
+  horizontalBands: number,
+  parkPole: boolean
+): string {
+  if (parkPole) {
+    const h = 1.45;
+    return `РОВНО ${qty} высоких опор «${fixtureName}» (~${h} м от земли) на тротуаре ПЕРЕД фасадом в один ряд. Шаг ${stepM} м. Видимый корпус и светящаяся головка.`;
+  }
+  switch (profile.placementMode) {
+    case "linear_ribbon":
+      return `${qty} модулей «${fixtureName}» на ${horizontalBands || "4–6"} горизонтальных поясах по высоте фасада. Непрерывная линия света от видимых корпусов.`;
+    case "linear_accent":
+      return `${qty} коротких линейных модулей «${fixtureName}» на выбранных карнизах/ярусах (не весь фасад). Видимые корпуса на линиях схемы.`;
+    case "contour_perimeter":
+      return `${qty} модулей «${fixtureName}» по контуру силуэта: карниз, вертикали углов, цоколь. Непрерывная тонкая линия по краям.`;
+    case "flood_wash":
+      return `РОВНО ${qty} прожекторов «${fixtureName}» на отмеченных точках — широкий пучок, равномерная заливка фасада. Не больше точек, чем на схеме.`;
+    case "accent_points":
+      return `РОВНО ${qty} акцентных «${fixtureName}» только в точках схемы (колонны, ниши, вход). Узкий пучок, между акцентами фасад темнее.`;
+    case "window_reveal":
+      return `${qty} модулей «${fixtureName}» у оконных проёмов — верх и низ каждого окна по схеме.`;
+    default:
+      return `${qty} светильников «${fixtureName}» по зонам фасада, шаг ${stepM} м.`;
+  }
+}
+
 /** @deprecated Используйте buildLightOnlyPrompt для AI; полный промпт — только для отладки */
 export function buildCombinedPrompt(
   input: CombinedPromptInput,
@@ -58,11 +173,13 @@ export function buildCombinedPrompt(
   const calc = input.calculation;
   const analysis = input.analysis;
   const dim = input.dimensions;
+  const profile = getFixturePlacementProfile(fixture!, usage.lightingType);
+  const tempK = fixture?.lightTemperatureK ?? 3000;
 
   const mountRule =
     usage.mountTarget === "facade"
-      ? "Монтаж НА фасаде здания (наружное крепление линейных светильников по архитектурным линиям)."
-      : "Монтаж РЯДОМ со зданием: отдельные опоры/фонари в зоне перед фасадом, без крепления к стене.";
+      ? "Монтаж НА фасаде здания (крепление по архитектурным линиям схемы)."
+      : "Монтаж РЯДОМ со зданием: опоры на тротуаре перед фасадом.";
 
   const dimLines: string[] = [];
   if (dim?.widthM) dimLines.push(`ширина фасада ${dim.widthM} м`);
@@ -84,40 +201,41 @@ export function buildCombinedPrompt(
       (ml) => Math.abs(ml.x2 - ml.x1) > Math.abs(ml.y2 - ml.y1)
     ).length ?? 0;
 
-  const placementRule = parkPole
-    ? `РОВНО ${qty} высоких опор «${fixtureName}» (NT-park STEP, ~1,45 м) на тротуаре ПЕРЕД фасадом в один ряд. Равномерный шаг ${stepM} м. Прямоугольный корпус, светящаяся головка сверху. НЕ низкие болларды и НЕ мини-фонарики.`
-    : usage.lightingType === "линейная"
-      ? `${qty} модулей «${fixtureName}» на ${horizontalBands || "4–6"} ГОРИЗОНТАЛЬНЫХ поясах по ВСЕЙ высоте фасада. Непрерывная линия тёплого света, без разрывов по окнам.`
-      : usage.lightingType === "заливная" && usage.mountTarget === "nearby"
-        ? `${qty} светильников «${fixtureName}» у основания здания / на площадке ПЕРЕД фасадом (низкий монтаж, без высоких столбов), шаг ${stepM} м. Заливка фасада и прилегающей зоны.`
-        : usage.lightingType === "заливная"
-          ? `${qty} прожекторов «${fixtureName}» по схеме — равномерная ЗАЛИВКА поверхности фасада широким пучком. Только корпуса NITEOS на отмеченных точках.`
-          : usage.lightingType === "акцентная"
-            ? `${qty} светильников «${fixtureName}» ТОЛЬКО в точках акцента на схеме (колонны, ниши, ризалиты). Узкий пучок, без сплошных линейных поясов.`
-            : usage.mountTarget === "nearby"
-              ? `${qty} опор «${fixtureName}» на тротуаре ПЕРЕД зданием (ноги на земле), шаг ${stepM} м.`
-              : `${qty} светильников «${fixtureName}» по зонам фасада.`;
+  const sizeLine = fixture ? buildFixtureSizePrompt(fixture) : "";
+  const lightCharacter = fixture
+    ? buildLightCharacterPrompt(profile, fixture)
+    : "";
 
-  const taskLine =
-    target === "openai_edit"
-      ? parkPole
-        ? `ЗАДАЧА: отредактировать подготовленное фото. На площадке перед фасадом уже размечены РОВНО ${qty} опор — превратить в реалистичный вечер 3000K. Сохранить число и позиции опор.`
-        : "ЗАДАЧА: отредактировать подготовленное фото. На фасаде уже размечены линии монтажа — превратить их в реалистичный вечерний свет 3000K. Линии только НА стене здания, не в небе."
-      : parkPole
-        ? `ЗАДАЧА: фотореалистичное здание вечером с ${qty} высокими опорами NT-park STEP перед фасадом.`
-        : "ЗАДАЧА: фотореалистичное изображение административного/общественного здания с архитектурной подсветкой вечером. Классический фасад с колоннами и окнами.";
+  const editHint =
+    target === "openai_edit" && parkPole
+      ? `- Следовать разметке: на площадке РОВНО ${qty} опор; не удалять и не добавлять`
+      : target === "openai_edit" && profile.placementMode === "linear_ribbon"
+        ? "- Следовать разметке: каждый горизонтальный пояс → одна непрерывная линия света"
+        : target === "openai_edit"
+          ? "- Следовать разметке на фото: не добавлять и не убирать светильники вне схемы"
+          : "";
 
   return [
-    taskLine,
+    taskLine(target, qty, profile, parkPole),
     "",
     "РАЗМЕРЫ:",
     dimLines.length ? dimLines.join("; ") : "пропорции типичного городского фасада",
+    sizeLine ? `Корпус: ${sizeLine}` : "",
     "",
     "СВЕТИЛЬНИК NITEOS:",
     `Модель: ${fixtureName}`,
     `Тип: ${usage.title}`,
     mountRule,
-    placementRule,
+    placementRule(
+      profile,
+      usage,
+      qty,
+      fixtureName,
+      stepM,
+      horizontalBands,
+      parkPole
+    ),
+    lightCharacter,
     calc
       ? `Зона подсветки ~${calc.zoneLengthM} м, шаг ${calc.fixture.mountingStepMeters} м.`
       : "",
@@ -130,38 +248,15 @@ export function buildCombinedPrompt(
     usage.applicationStyle ?? "",
     "",
     "ТРЕБОВАНИЯ:",
-    "- Вечер/сумерки, реалистичная городская атмосфера, тёплый белый 3000K",
-    parkPole
-      ? `- РОВНО ${qty} высоких опор (~1,45 м) на тротуаре; свет снизу вверх на фасад; шаг ~${stepM} м`
-      : usage.lightingType === "линейная"
-        ? "- Подсветка ВСЕГО здания: горизонтальные линии от карниза до цоколя; сплошная полоса света (не пятна, не «дым»)"
-        : usage.lightingType === "заливная"
-          ? "- Равномерная заливка фасада широким пучком; мягкий свет без пересветов; только выбранная серия NITEOS"
-          : usage.lightingType === "акцентная"
-            ? "- Точечные акценты ТОЛЬКО на архитектурных деталях по схеме; между акцентами фасад темнее"
-            : usage.mountTarget === "nearby"
-              ? "- Опоры/прожекторы на земле перед фасадом по схеме"
-              : "- На фасаде видны корпуса светильников NITEOS",
-    usage.lightingType === "линейная"
-      ? `- Корпуса «${fixtureName}» видны вдоль линий; свет — ровная лента, чёткий край, мягкая заливка между поясами`
+    `- Вечер/сумерки, реалистичная атмосфера, ${tempK}K`,
+    `- ${lightCharacter}`,
+    profile.placementMode === "linear_ribbon"
+      ? "- МОЖНО: зажечь уже существующие уличные фонари на фото (не добавлять новые)"
       : "",
-    usage.lightingType === "линейная"
-      ? "- МОЖНО: включить тёплый свет у УЖЕ СУЩЕСТВУЮЩИХ уличных фонарей на фото (если они есть) — только зажечь, не добавлять новые"
-      : "",
-    parkPole
-      ? "- ЗАПРЕЩЕНО: низкие болларды, мини-фонари, другой тип опор; менять количество опор"
-      : "- ЗАПРЕЩЕНО: мелкие точечные прожекторы, V-образные uplight между колоннами, светильники на столбах/балконах, которых нет в схеме",
-    parkPole ? "" : "- ЗАПРЕЩЕНО: тонкие LED-нити без корпуса, вертикальные линии, дымчатые облака вместо линейного света",
-    parkPole || usage.mountTarget === "nearby"
-      ? ""
-      : "- ЗАПРЕЩЕНО: добавлять новые уличные фонари (кроме явно выбранных опор NT-park)",
-    "- Реалистичная заливка 3000K, профессиональная архитектурная визуализация",
+    ...forbiddenRules(profile, parkPole),
+    "- Реалистичная профессиональная архитектурная визуализация",
     "- Без схемы, номеров, жёлтых полос, абстрактных точек",
-    target === "openai_edit" && parkPole
-      ? `- Следовать разметке: на площадке перед фасадом РОВНО ${qty} опор; не удалять и не добавлять`
-      : target === "openai_edit"
-        ? "- Следовать разметке на фото: каждый горизонтальный пояс → одна непрерывная линия света на карнизе/межэтажье; подсветить ВСЕ пояса сверху донизу"
-        : "",
+    editHint,
     target === "openai_edit"
       ? "- Не менять форму здания, окна, колонны и материалы фасада"
       : "- Детализированный фасад, профессиональная архитектурная съёмка",
@@ -193,6 +288,10 @@ export function buildYandexPrompt(input: CombinedPromptInput): string {
   const dim = input.dimensions;
   const qty = calc?.quantity ?? 0;
   const fixtureName = calc?.fixture.name ?? fixture?.name ?? "NITEOS";
+  const profile = fixture
+    ? getFixturePlacementProfile(fixture, usage.lightingType)
+    : null;
+  const tempK = fixture?.lightTemperatureK ?? 3000;
 
   const dims: string[] = [];
   if (dim?.heightM) dims.push(`высота ${dim.heightM} м`);
@@ -211,15 +310,24 @@ export function buildYandexPrompt(input: CombinedPromptInput): string {
     .trim()
     .slice(0, 100);
 
+  const lightHint =
+    profile?.placementMode === "accent_points"
+      ? "Точечные акценты, без полос."
+      : profile?.placementMode === "flood_wash"
+        ? "Широкая заливка прожекторами."
+        : profile?.placementMode === "contour_perimeter"
+          ? "Контур по краям здания."
+          : profile?.placementMode === "window_reveal"
+            ? "Подсветка окон."
+            : "Горизонтальные линии света по этажам.";
+
   const parts = [
     "Фотореализм, вечер, классическое здание, колонны, окна.",
     `Архитектурная подсветка NITEOS: ${fixtureName}, ${qty} шт., ${mount}.`,
     dimStr + ".",
-    usage.lightingType === "линейная"
-      ? "Горизонтальные линии света по этажам."
-      : "Мягкая заливка фасада.",
+    lightHint,
     catalogHint,
-    "Тёплый белый 3000K, без схемы и точек.",
+    `Тёплый белый ${tempK}K, без схемы и точек.`,
   ];
 
   let text = parts.filter(Boolean).join(" ");

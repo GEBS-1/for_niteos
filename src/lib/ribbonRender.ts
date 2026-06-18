@@ -83,7 +83,9 @@ export async function buildRibbonComposites(
   imageWidth: number,
   imageHeight: number,
   mountType: FixtureMountType,
-  display: DisplayOptions
+  display: DisplayOptions,
+  /** Для контурной подсветки — укладка и по вертикалям */
+  includeVerticalLines = false
 ): Promise<RibbonComposite[]> {
   const isDemo = display.scale === "demo";
   const bodyOpacity = isDemo ? 0.55 : 0.22;
@@ -105,7 +107,7 @@ export async function buildRibbonComposites(
   const out: RibbonComposite[] = [];
 
   const lines =
-    mountType === "linear"
+    mountType === "linear" && !includeVerticalLines
       ? mountLines.filter(isMostlyHorizontal)
       : mountLines;
 

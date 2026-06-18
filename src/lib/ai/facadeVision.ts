@@ -11,6 +11,7 @@ import { normalizeFacadeDetection } from "@/lib/facadeGeometry";
 import { buildMockFacadeDetection } from "@/lib/mockFacadeDetection";
 import type {
   FacadeDetection,
+  Fixture,
   LightingType,
   MountLine,
   MountTarget,
@@ -141,6 +142,24 @@ mountLines: exactly ONE horizontal line on the GROUND / sidewalk IN FRONT of the
 - x spans the paved area in front of the facade (not on the building).
 - This is where pole fixtures stand, NOT facade architectural lines.`;
 
+const VISION_SYSTEM_CONTOUR = `You analyze building facade photos for CONTOUR lighting (NITEOS NT-CONTOUR, NT-LACE).
+Return ONLY valid JSON, no markdown.
+Schema: same as facade linear.
+facadeBox: tight box on building walls only.
+mountLines: 3-5 lines along building SILHOUETTE edges:
+- top cornice (horizontal, full width)
+- left vertical edge (full height)
+- right vertical edge (full height)
+- optional base plinth (horizontal)
+Vertical lines: x1 equals x2. Horizontal: y1 equals y2. All inside facadeBox.`;
+
+const VISION_SYSTEM_WINDOW = `You analyze building facade photos for WINDOW reveal lighting (NITEOS NT-LIGA WINDOW).
+Return ONLY valid JSON, no markdown.
+Schema: same as facade linear.
+facadeBox: tight box on building walls only.
+mountLines: many SHORT horizontal segments (8-18% facade width) above and below window rows.
+NOT full-width belts. Place pairs of short lines per window bay.`;
+
 export async function detectFacadeWithAi(
   imageDataUrl: string,
   lightingType: LightingType,
@@ -159,20 +178,30 @@ export async function detectFacadeWithAi(
   const isNearby = mountTarget === "nearby";
   const isAccent = lightingType === "акцентная";
   const isFlood = lightingType === "заливная";
+  const isContour = lightingType === "контурная";
+  const isWindow = lightingType === "оконная";
   const system = isNearby
     ? VISION_SYSTEM_NEARBY
-    : isAccent
-      ? VISION_SYSTEM_ACCENT
-      : isFlood
-        ? VISION_SYSTEM_FLOOD
-        : VISION_SYSTEM_FACADE;
+    : isWindow
+      ? VISION_SYSTEM_WINDOW
+      : isContour
+        ? VISION_SYSTEM_CONTOUR
+        : isAccent
+          ? VISION_SYSTEM_ACCENT
+          : isFlood
+            ? VISION_SYSTEM_FLOOD
+            : VISION_SYSTEM_FACADE;
   const userText = isNearby
     ? "Pole luminaires on sidewalk before the building. Return facadeBox and one ground mountLine."
-    : isAccent
-      ? `Accent spot lighting (${lightingType}). Short mount segments on architectural details only.`
-      : isFlood
-        ? `Flood wash lighting (${lightingType}). Few horizontal mount zones for wide-beam projectors.`
-        : `Linear facade lighting (${lightingType}). Horizontal mount lines on cornices and floor belts only.`;
+    : isWindow
+      ? `Window reveal lighting (${lightingType}). Short segments above/below windows only.`
+      : isContour
+        ? `Contour edge lighting (${lightingType}). Lines along roof edge and vertical corners.`
+        : isAccent
+          ? `Accent spot lighting (${lightingType}). Short mount segments on architectural details only.`
+          : isFlood
+            ? `Flood wash lighting (${lightingType}). Few horizontal mount zones for wide-beam projectors.`
+            : `Linear facade lighting (${lightingType}). Horizontal mount lines on cornices and floor belts only.`;
 
   const response = await client.chat.completions.create({
     model: getVisionModel(),
@@ -197,22 +226,24 @@ export async function detectFacadeWithAi(
 function finalizeDetection(
   raw: FacadeDetection,
   lightingType: LightingType,
-  mountTarget: MountTarget
+  mountTarget: MountTarget,
+  fixture?: Fixture
 ): FacadeDetection {
-  return normalizeFacadeDetection(raw, { lightingType, mountTarget });
+  return normalizeFacadeDetection(raw, { lightingType, mountTarget, fixture });
 }
 
 export async function resolveFacadeDetection(
   imageDataUrl: string | undefined,
   lightingType: LightingType,
-  mountTarget: MountTarget
+  mountTarget: MountTarget,
+  fixture?: Fixture
 ): Promise<{ detection: FacadeDetection; source: "ai" | "mock" }> {
   if (imageDataUrl) {
     try {
       const ai = await detectFacadeWithAi(imageDataUrl, lightingType, mountTarget);
       if (ai && ai.mountLines.length > 0) {
         return {
-          detection: finalizeDetection(ai, lightingType, mountTarget),
+          detection: finalizeDetection(ai, lightingType, mountTarget, fixture),
           source: "ai",
         };
       }
@@ -224,7 +255,8 @@ export async function resolveFacadeDetection(
     detection: finalizeDetection(
       buildMockFacadeDetection(lightingType, mountTarget),
       lightingType,
-      mountTarget
+      mountTarget,
+      fixture
     ),
     source: "mock",
   };
