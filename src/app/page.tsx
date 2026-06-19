@@ -86,6 +86,7 @@ export default function HomePage() {
   const [bodiesUrl, setBodiesUrl] = useState<string | null>(null);
   const [lightUrl, setLightUrl] = useState<string | null>(null);
   const [aiUrl, setAiUrl] = useState<string | null>(null);
+  const [visionDebugUrl, setVisionDebugUrl] = useState<string | null>(null);
   const [activeCalculation, setActiveCalculation] = useState<CalculationResult | null>(null);
   const [aiProvider] = useState<SelectableAiProvider | null>(null);
   const [visualMode, setVisualMode] = useState<string | null>(null);
@@ -119,6 +120,7 @@ export default function HomePage() {
       setBodiesUrl(null);
       setLightUrl(null);
       setAiUrl(null);
+      setVisionDebugUrl(null);
       setActiveCalculation(null);
       setVisualMode(null);
       setVisualMessage(null);
@@ -350,6 +352,7 @@ export default function HomePage() {
         response = data as AnalyzeResponse;
       }
       setResult(response);
+      setVisionDebugUrl(response.visionDebugImage ?? null);
       setActiveCalculation(response.activeCalculation);
 
       void trackLeadEvent("calculate", {
@@ -406,6 +409,7 @@ export default function HomePage() {
     setBodiesUrl(null);
     setLightUrl(null);
     setAiUrl(null);
+    setVisionDebugUrl(null);
     setActiveCalculation(null);
     setVisualMode(null);
     setVisualMessage(null);
@@ -544,6 +548,12 @@ export default function HomePage() {
                 subtitle="Фото клиента"
                 src={imageUrl}
                 loading={false}
+              />
+              <ResultImageCard
+                title="Карта зон Vision"
+                subtitle="Красный — фасад и запреты · зелёный — разрешённые линии · жёлтый — точки монтажа"
+                src={visionDebugUrl}
+                loading={loading || visLoading}
               />
               <ResultImageCard
                 title="2. Размещение светильников"

@@ -103,13 +103,133 @@ export interface MountLine {
 
 
 
-/** Этап 1: только геометрия фасада */
+export interface ZoneLine {
+
+  x1: number;
+
+  y1: number;
+
+  x2: number;
+
+  y2: number;
+
+  type?: string;
+
+  id?: string;
+
+  label?: string;
+
+}
+
+
+
+export interface ZoneBox {
+
+  x: number;
+
+  y: number;
+
+  width: number;
+
+  height: number;
+
+  type?: string;
+
+}
+
+
+
+export type MountZoneKey =
+
+  | "linear_facade"
+
+  | "accent_facade"
+
+  | "window_lighting"
+
+  | "ground_projector"
+
+  | "pole_lighting";
+
+
+
+export interface FacadeArchitecture {
+
+  roofLine: ZoneLine[];
+
+  cornices: ZoneLine[];
+
+  floorBelts: ZoneLine[];
+
+  columns: ZoneBox[];
+
+  pilasters: ZoneBox[];
+
+  windowRows: ZoneBox[];
+
+  entranceZone: ZoneBox[];
+
+  groundLine: ZoneLine[];
+
+  sidewalk: ZoneLine[];
+
+  grass: ZoneLine[];
+
+}
+
+
+
+export interface ForbiddenZones {
+
+  sky: ZoneBox[];
+
+  road: ZoneBox[];
+
+  windows: ZoneBox[];
+
+  doors: ZoneBox[];
+
+  trees: ZoneBox[];
+
+  cars: ZoneBox[];
+
+  people: ZoneBox[];
+
+}
+
+
+
+export interface RecommendedMountZones {
+
+  linear_facade: ZoneLine[];
+
+  accent_facade: ZoneLine[];
+
+  window_lighting: ZoneLine[];
+
+  ground_projector: ZoneLine[];
+
+  pole_lighting: ZoneLine[];
+
+}
+
+
+
+/** Этап 1: геометрия фасада и карта зон монтажа */
 
 export interface FacadeDetection {
 
   facadeBox: NormalizedBox;
 
+  /** Итоговые линии после правил (для размещения) */
+
   mountLines: MountLine[];
+
+  architecture?: FacadeArchitecture;
+
+  forbiddenZones?: ForbiddenZones;
+
+  recommendedMountZones?: RecommendedMountZones;
 
   confidence?: number;
 
@@ -374,6 +494,10 @@ export interface AnalyzeResponse {
   pipeline?: PipelineStages;
 
   pipelineLog?: PipelineLogEntry[];
+
+  /** Debug: карта зон Vision (красный/зелёный/жёлтый) */
+
+  visionDebugImage?: string;
 
 }
 

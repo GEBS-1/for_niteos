@@ -9,6 +9,8 @@ import { buildFacadeAnalysisLegacy, recommendLightingType, validateDimensions } 
 import type { AnalyzeRequest, AnalyzeResponse } from "@/lib/types";
 import { CATALOG } from "@/lib/catalog";
 import { PipelineLogger } from "@/lib/pipelineLog";
+import { dataUrlToBuffer } from "@/lib/visualizeLocal";
+import { renderVisionDebugOverlay } from "@/lib/visionDebugOverlay";
 
 function resolveSelectedPrompt(params: AnalyzeRequest) {
   if (!params.fixtureId && !params.promptId) return undefined;
@@ -56,10 +58,32 @@ export async function runAnalyzePipelineAsync(
     detectionInput = { detection, source };
     logger.log("vision", `detection result: ${source}`, {
       lines: detection.mountLines.length,
+      hasArchitecture: Boolean(detection.architecture),
+      hasForbidden: Boolean(detection.forbiddenZones),
     });
   } else {
     logger.log("vision", "no imageDataUrl — mock only", {}, "warn");
   }
 
-  return runAnalyzePipelineSync(params, detectionInput, logger);
+  const result = runAnalyzePipelineSync(params, detectionInput, logger);
+
+  if (params.imageDataUrl && result.pipeline) {
+    try {
+      const buffer = dataUrlToBuffer(params.imageDataUrl);
+      result.visionDebugImage = await renderVisionDebugOverlay(
+        buffer,
+        result.pipeline.detection,
+        result.placement,
+        fixture,
+        mountTarget,
+        result.activeCalculation.lightingType
+      );
+    } catch (e) {
+      logger.log("vision-debug", "overlay failed", {
+        error: e instanceof Error ? e.message : String(e),
+      }, "warn");
+    }
+  }
+
+  return result;
 }

@@ -1,18 +1,9 @@
+import { getMountZoneKey } from "@/lib/mountRules";
+import { buildGroundFrontLine } from "@/lib/facadeGeometry";
 import {
-
-  buildGroundFrontLine,
-
-  resolveAccentMountLines,
-
-  resolveContourMountLines,
-
-  resolveFloodMountLines,
-
-  resolveLinearMountLines,
-
-  resolveWindowMountLines,
-
-} from "@/lib/facadeGeometry";
+  filterPlacementsByForbidden,
+  resolveMountLinesForFixture,
+} from "@/lib/mountZoneGeometry";
 
 import {
 
@@ -199,95 +190,17 @@ export function resolvePlacementMountLines(
 
 ): MountLine[] {
 
-  const profile = getFixturePlacementProfile(fixture, lightingType);
+  return resolveMountLinesForFixture(
 
-  const mountType = resolveMountType(fixture, mountTarget);
+    detection,
 
+    fixture,
 
+    mountTarget,
 
-  if (mountType === "pole" || mountTarget === "nearby") {
+    lightingType
 
-    return [buildGroundFrontLine(detection.facadeBox)];
-
-  }
-
-
-
-  const box = detection.facadeBox;
-
-  const detected = detection.mountLines;
-
-
-
-  switch (profile.placementMode) {
-
-    case "linear_ribbon":
-
-      return resolveLinearMountLines(
-
-        box,
-
-        detected,
-
-        profile.minBands ?? 4,
-
-        profile.maxBands ?? 6
-
-      );
-
-    case "linear_accent":
-
-      return resolveLinearMountLines(
-
-        box,
-
-        detected,
-
-        profile.minBands ?? 2,
-
-        profile.maxBands ?? 4
-
-      );
-
-    case "contour_perimeter":
-
-      return resolveContourMountLines(box, detected);
-
-    case "flood_wash":
-
-      return resolveFloodMountLines(
-
-        box,
-
-        detected,
-
-        profile.minBands ?? 2,
-
-        profile.maxBands ?? 3
-
-      );
-
-    case "accent_points":
-
-      return resolveAccentMountLines(box, detected);
-
-    case "window_reveal":
-
-      return resolveWindowMountLines(box, detected, profile.maxTotalFixtures ?? 40);
-
-    case "pole_row":
-
-      return [buildGroundFrontLine(box)];
-
-    default:
-
-      return detected.length > 0
-
-        ? detected
-
-        : resolveLinearMountLines(box, []);
-
-  }
+  );
 
 }
 
@@ -529,7 +442,11 @@ export function placeFixturesAlongMountLines(input: PlaceFixturesInput): {
 
 
 
-  const capped = capTotalFixtures(fixtures, profile);
+  const zoneKey = getMountZoneKey(fixture, mountTarget, profile);
+  const capped = capTotalFixtures(
+    filterPlacementsByForbidden(fixtures, detection.forbiddenZones, zoneKey),
+    profile
+  );
 
 
 

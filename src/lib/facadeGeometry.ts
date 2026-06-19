@@ -1,4 +1,6 @@
-import { getFixturePlacementProfile } from "@/lib/fixturePlacementProfile";
+import {
+  resolveMountLinesForFixture,
+} from "@/lib/mountZoneGeometry";
 import type {
   FacadeDetection,
   Fixture,
@@ -378,77 +380,27 @@ export function normalizeFacadeDetection(
   options: NormalizeDetectionOptions = {}
 ): FacadeDetection {
   const { lightingType, mountTarget, fixture } = options;
-  const isNearby = mountTarget === "nearby";
-  const profile = fixture
-    ? getFixturePlacementProfile(fixture, lightingType)
-    : null;
 
-  let box = tightenFacadeBox(raw.facadeBox, raw.mountLines);
-  let mountLines = raw.mountLines.map((ml) => clampMountLineToBox(ml, box));
-
-  if (isNearby) {
-    return {
-      ...raw,
-      facadeBox: box,
-      mountLines: [buildGroundFrontLine(box)],
+  let detection = { ...raw };
+  if (fixture && mountTarget) {
+    const mountLines = resolveMountLinesForFixture(
+      detection,
+      fixture,
+      mountTarget,
+      lightingType
+    );
+    detection = {
+      ...detection,
+      mountLines,
+      facadeBox: tightenFacadeBox(detection.facadeBox, mountLines),
     };
-  }
-
-  const mode = profile?.placementMode;
-  const isLinear =
-    !isNearby &&
-    (mode === "linear_ribbon" ||
-      mode === "linear_accent" ||
-      (!profile && lightingType === "линейная"));
-
-  if (isLinear) {
-    const min = profile?.minBands ?? 4;
-    const max = profile?.maxBands ?? 6;
-    mountLines = resolveLinearMountLines(box, mountLines, min, max);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (
-    mode === "contour_perimeter" ||
-    (!profile && lightingType === "контурная")
-  ) {
-    mountLines = resolveContourMountLines(box, mountLines);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (mode === "window_reveal" || (!profile && lightingType === "оконная")) {
-    mountLines = resolveWindowMountLines(box, mountLines);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (
-    mode === "flood_wash" ||
-    (!profile && lightingType === "заливная" && mountTarget === "facade")
-  ) {
-    const min = profile?.minBands ?? 2;
-    const max = profile?.maxBands ?? 3;
-    mountLines = resolveFloodMountLines(box, mountLines, min, max);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
-  } else if (
-    mode === "accent_points" ||
-    (!profile && lightingType === "акцентная")
-  ) {
-    mountLines = resolveAccentMountLines(box, mountLines);
-    box = tightenFacadeBox(box, mountLines);
-    mountLines = mountLines.map((ml) => clampMountLineToBox(ml, box));
   } else {
-    mountLines = mountLines
-      .map((ml) => clampMountLineToBox(ml, box))
-      .filter((ml) => horizontalSpan(ml) > 0.02 || !isMostlyHorizontal(ml));
+    let box = tightenFacadeBox(raw.facadeBox, raw.mountLines);
+    const mountLines = raw.mountLines.map((ml) => clampMountLineToBox(ml, box));
+    detection = { ...raw, facadeBox: box, mountLines };
   }
 
-  if (mountLines.length === 0 && isLinear) {
-    mountLines = evenHorizontalBandsInBox(box, profile?.minBands ?? 5);
-  }
-
-  return {
-    ...raw,
-    facadeBox: box,
-    mountLines,
-  };
+  return detection;
 }
 
 /** Все Y линий внутри бокса (для тестов) */
