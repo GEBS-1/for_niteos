@@ -172,37 +172,6 @@ function buildGlowSvg(
   }
 }
 
-function placementMarkersSvg(
-  width: number,
-  height: number,
-  placements: FixturePlacement[],
-  mountLines: PlacementScheme["mountLines"],
-  demo: boolean
-): string {
-  const strokeW = demo ? 3 : 2;
-  const lineEls = (mountLines ?? [])
-    .map(
-      (ml) =>
-        `<line x1="${ml.x1 * width}" y1="${ml.y1 * height}" x2="${ml.x2 * width}" y2="${ml.y2 * height}" stroke="rgba(0,255,200,0.45)" stroke-width="${strokeW}" stroke-dasharray="8 6"/>`
-    )
-    .join("");
-
-  const markers = placements
-    .map((p, i) => {
-      const cx = p.x * width;
-      const cy = p.y * height;
-      const w = Math.max(demo ? 72 : 24, p.widthPx ?? 40);
-      const h = Math.max(demo ? 20 : 10, p.heightPx ?? 14);
-      return `<g>
-        <rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" fill="${demo ? "rgba(255,200,80,0.25)" : "none"}" stroke="rgba(255,200,80,0.95)" stroke-width="${strokeW}" rx="3"/>
-        <text x="${cx}" y="${cy + (demo ? 5 : 4)}" text-anchor="middle" font-size="${demo ? 13 : 10}" fill="rgba(255,230,180,0.95)" font-family="sans-serif">${i + 1}</text>
-      </g>`;
-    })
-    .join("");
-
-  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${lineEls}${markers}</svg>`;
-}
-
 function clampTargetWidth(
   requested: number,
   imageWidth: number,
@@ -214,13 +183,41 @@ function clampTargetWidth(
   return Math.max(bounds.min, Math.min(bounds.max, Math.max(scaled, floor)));
 }
 
+async function knockOutStudioBackground(input: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(input)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const pixels = data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const a = pixels[i + 3];
+    if (a === 0) continue;
+    const lum = (r + g + b) / 3;
+    const spread = Math.max(r, g, b) - Math.min(r, g, b);
+    if (lum >= 228 && spread <= 28) {
+      pixels[i + 3] = 0;
+    }
+  }
+
+  return sharp(pixels, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+}
+
 async function loadFixtureRaster(
   fixturePath: string,
   targetW: number,
   rotation: number,
   mountType: FixtureMountType
 ): Promise<{ buffer: Buffer; meta: { w: number; h: number } }> {
-  let buf = await sharp(fixturePath).trim({ threshold: 12 }).ensureAlpha().toBuffer();
+  let buf = await sharp(fixturePath).trim({ threshold: 24 }).ensureAlpha().toBuffer();
+  buf = await knockOutStudioBackground(buf);
   const meta0 = await sharp(buf).metadata();
   let w = meta0.width ?? 100;
   let h = meta0.height ?? 40;
@@ -274,23 +271,27 @@ export async function renderLocalVisualization(
     fixtureId: fixture.id,
   });
 
-  const eveningBase = await sharp(imageBuffer)
-    .modulate({ brightness: 0.58, saturation: 0.82 })
-    .linear(1.02, -16)
-    .tint({ r: 28, g: 40, b: 78 })
-    .toBuffer();
+  const eveningBase = display.eveningBase !== false
+    ? await sharp(imageBuffer)
+        .modulate({ brightness: 0.58, saturation: 0.82 })
+        .linear(1.02, -16)
+        .tint({ r: 28, g: 40, b: 78 })
+        .toBuffer()
+    : imageBuffer;
 
   const role = resolvePlacementImageRole(fixture, fixture.mountType ?? "facade");
   const fixturePath = getFixtureImagePath(fixture, role);
   const fixtureFileExists = fs.existsSync(fixturePath);
   let fixtureSourceSize: { w: number; h: number } | undefined;
-  if (fixtureFileExists) {
-    const fm = await sharp(fixturePath).metadata();
-    fixtureSourceSize = { w: fm.width ?? 0, h: fm.height ?? 0 };
-    logInfo("fixture-png", { fixturePath, role, ...fixtureSourceSize });
-  } else {
+  if (!fixtureFileExists) {
     logWarn("fixture-png-missing", { fixturePath, role });
+    throw new Error(
+      `PNG светильника не найден: ${fixturePath}. Запустите: npm run sync:fixtures`
+    );
   }
+  const fm = await sharp(fixturePath).metadata();
+  fixtureSourceSize = { w: fm.width ?? 0, h: fm.height ?? 0 };
+  logInfo("fixture-png", { fixturePath, role, ...fixtureSourceSize });
 
   const report: LocalRenderReport = {
     imageWidth: width,
@@ -301,7 +302,7 @@ export async function renderLocalVisualization(
     placementsTotal: placement.fixtures.length,
     pngComposited: 0,
     pngSkipped: 0,
-    markerComposited: display.showMarkers ? 1 : 0,
+    markerComposited: 0,
     skipReasons: [],
     compositeSamples: [],
     displayMode: display.scale,
@@ -321,7 +322,7 @@ export async function renderLocalVisualization(
   if (useRibbonBodies && fixtureFileExists) {
     try {
       const moduleW = clampTargetWidth(
-        placement.fixtures[0]?.widthPx ?? Math.round(width * 0.08),
+        Math.round((placement.fixtures[0]?.widthPx ?? Math.round(width * 0.08)) * (isDemo ? 1.6 : 1)),
         width,
         display
       );
@@ -414,21 +415,6 @@ export async function renderLocalVisualization(
     left: number;
     blend?: "over" | "screen";
   }[] = [];
-  if (display.showMarkers) {
-    overlayLayers.push({
-      input: Buffer.from(
-        placementMarkersSvg(
-          width,
-          height,
-          placement.fixtures,
-          placement.mountLines,
-          isDemo
-        )
-      ),
-      top: 0,
-      left: 0,
-    });
-  }
   if (display.showGlow) {
     const glowIntensity = isDemo ? 0.9 : 1.05;
     const glowSvg = useRibbonGlow

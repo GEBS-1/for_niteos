@@ -88,10 +88,11 @@ export async function buildRibbonComposites(
   includeVerticalLines = false
 ): Promise<RibbonComposite[]> {
   const isDemo = display.scale === "demo";
-  const bodyOpacity = isDemo ? 0.55 : 0.22;
+  const bodyOpacity = isDemo ? 0.94 : 0.72;
   const bounds = getFixtureWidthBounds(display.scale, imageWidth);
-  const tileW = Math.max(bounds.min * 0.5, Math.min(moduleW, bounds.max * 0.6));
-  const tileH = Math.max(isDemo ? 22 : 12, Math.round(moduleH * (tileW / moduleW)));
+  const boostedW = Math.round(moduleW * (isDemo ? 1.55 : 1.1));
+  const tileW = Math.max(bounds.min, Math.min(boostedW, bounds.max));
+  const tileH = Math.max(isDemo ? 28 : 14, Math.round(moduleH * (tileW / moduleW)));
 
   let tile = await sharp(moduleBuffer)
     .resize(Math.round(tileW), tileH, { fit: "inside" })
@@ -131,15 +132,15 @@ export async function buildRibbonComposites(
       segH = sm.height ?? tw;
     }
 
-    const step = Math.max(segW * 0.38, segW * 0.35);
-    const count = Math.max(1, Math.ceil(lenPx / step));
+    const step = Math.max(segW * 0.82, segW * 0.75);
+    const count = Math.max(1, Math.floor(lenPx / step));
     const x1 = ml.x1 * imageWidth;
     const y1 = ml.y1 * imageHeight;
     const x2 = ml.x2 * imageWidth;
     const y2 = ml.y2 * imageHeight;
 
-    for (let i = 0; i <= count; i++) {
-      const t = count <= 0 ? 0.5 : i / count;
+    for (let i = 0; i < count; i++) {
+      const t = count <= 1 ? 0.5 : i / (count - 1);
       const cx = x1 + (x2 - x1) * t;
       const cy = y1 + (y2 - y1) * t;
       const left = Math.round(cx - segW / 2);

@@ -30,6 +30,6 @@ export async function runClientVisualization(
     imageDataUrl: out,
     mode: "static_demo",
     message:
-      "Демо в браузере. Полная визуализация с PNG светильниками — при npm run dev.",
+      "Статический хостинг: только световой оверлей в браузере. Для PNG корпусов — npm run dev.",
   };
 }

@@ -54,10 +54,6 @@ export function renderLightingOverlay(
         ctx.beginPath();
         ctx.arc(px, py, glowR, 0, Math.PI * 2);
         ctx.fill();
-        const hw = pointRadius * 1.2 * (fp.scale ?? 0.1);
-        const hh = pointRadius * 0.4 * (fp.scale ?? 0.1);
-        ctx.fillStyle = "rgba(255, 230, 180, 0.9)";
-        ctx.fillRect(px - hw, py - hh, hw * 2, hh * 2);
       }
 
       for (const p of placement.points ?? []) {

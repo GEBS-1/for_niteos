@@ -153,41 +153,30 @@ export function fixturePixelSize(
 
 
 function countForLine(
-
+  lenPx: number,
   lenM: number,
-
   stepM: number,
-
+  pxPerMeter: number,
   profile: FixturePlacementProfile
-
 ): number {
-
-  const effectiveStep = stepM * (profile.stepMultiplier ?? 1);
-
-  let count = Math.max(1, Math.ceil(lenM / effectiveStep));
-
-
+  const mountingStepPx = Math.max(8, stepM * pxPerMeter);
+  const effectiveStepPx = mountingStepPx * (profile.stepMultiplier ?? 1);
+  let count = Math.max(1, Math.floor(lenPx / effectiveStepPx));
 
   if (profile.onePerSegment) {
-
     return 1;
-
   }
-
   if (profile.maxFixturesPerLine != null) {
-
     count = Math.min(count, profile.maxFixturesPerLine);
-
   }
-
   if (profile.placementMode === "linear_accent") {
-
     count = Math.min(count, profile.maxFixturesPerLine ?? 4);
-
   }
-
+  // fallback если линия очень короткая
+  if (count < 1 && lenM > 0) {
+    count = Math.max(1, Math.floor(lenM / (stepM * (profile.stepMultiplier ?? 1))));
+  }
   return count;
-
 }
 
 
@@ -520,7 +509,13 @@ export function placeFixturesAlongMountLines(input: PlaceFixturesInput): {
 
       zoneLengthM += lenM;
 
-      const count = countForLine(lenM, stepM, profile);
+      const count = countForLine(
+        lenPx,
+        lenM,
+        stepM,
+        scale.pixelsPerMeter,
+        profile
+      );
 
       fixtures.push(
 

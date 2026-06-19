@@ -188,6 +188,11 @@ export interface Fixture {
   /** Фото «Применение» — референс итоговой подсветки для AI */
   imageApplication?: string;
 
+  /** Алиасы MVP v2 (frontImage → image) */
+  frontImage?: string;
+  sideImage?: string;
+  angleImage?: string;
+
   usagePrompts: UsagePrompt[];
 
 }
@@ -441,6 +446,12 @@ export interface LocalRenderReport {
 export interface VisualizationResponse {
 
   originalImage: string;
+
+  /** Фото с корпусами светильников (без света) */
+  fixturesVisualization?: string;
+
+  /** Фото с корпусами и локальным светом */
+  fixturesWithLightVisualization?: string;
 
   localVisualization: string;
 

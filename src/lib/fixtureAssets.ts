@@ -41,13 +41,16 @@ const LEGACY_ALIASES: Record<string, string> = {
 export type FixtureImageRole = "front" | "side" | "top" | "default";
 
 export function getFixturePublicPath(fixture: Fixture, role: FixtureImageRole = "default"): string {
-  if (role === "side" && fixture.imageSide) return fixture.imageSide;
-  if (role === "top" && fixture.imageTop) return fixture.imageTop;
-  if (role === "front" && fixture.image) return fixture.image;
+  const front = fixture.frontImage ?? fixture.image;
+  const side = fixture.sideImage ?? fixture.imageSide;
+  const top = fixture.imageTop;
+  if (role === "side" && side) return side;
+  if (role === "top" && top) return top;
+  if (role === "front" && front) return front;
   const fb = FIXTURE_PNG_FALLBACK[fixture.id];
-  if (role === "side") return fixture.imageSide ?? fb?.side ?? fixture.image;
-  if (role === "top") return fixture.imageTop ?? fb?.top ?? fixture.image;
-  return fixture.image ?? fb?.front ?? `/fixtures/${fixture.id}/front.png`;
+  if (role === "side") return side ?? fb?.side ?? front ?? `/fixtures/${fixture.id}/side.png`;
+  if (role === "top") return top ?? fb?.top ?? front ?? `/fixtures/${fixture.id}/top.png`;
+  return front ?? fb?.front ?? `/fixtures/${fixture.id}/front.png`;
 }
 
 export function getFixtureImagePath(fixture: Fixture, role: FixtureImageRole = "default"): string {
@@ -69,13 +72,14 @@ export function getFixtureImagePath(fixture: Fixture, role: FixtureImageRole = "
   return full;
 }
 
-/** На фасаде линейный — боковой ракурс; опора — фронт */
+/** На фасаде линейный — светодиодная грань (side); опора — фронт */
 export function resolvePlacementImageRole(
   fixture: Fixture,
   mountType: FixtureMountType
 ): FixtureImageRole {
   if (mountType === "linear" || fixture.category === "linear_facade") {
-    return fixture.imageSide ? "side" : "front";
+    return "side";
   }
+  if (fixture.imageSide) return "side";
   return "front";
 }

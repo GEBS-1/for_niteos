@@ -6,9 +6,14 @@ import {
   usesChatCompletionsForImages,
   resolveImageProvider,
   shouldAllowLocalFallback,
+  shouldAiEnhanceLight,
   shouldYandexKeepOriginalPhoto,
 } from "@/config/ai.config";
-import { PREP_FOR_AI_DISPLAY_OPTIONS } from "@/lib/displayOptions";
+import {
+  MVP_BODIES_AND_LIGHT,
+  MVP_BODIES_ONLY,
+} from "@/lib/displayOptions";
+import { buildEquipmentPricing } from "@/lib/equipmentPricing";
 import { PipelineLogger } from "@/lib/pipelineLog";
 import { renderLocalVisualization, dataUrlToBuffer } from "@/lib/visualizeLocal";
 import type {
@@ -19,16 +24,13 @@ import type {
   PlacementScheme,
   VisualizationResponse,
 } from "@/lib/types";
-import {
-  buildCombinedPrompt,
-  type CombinedPromptInput,
-} from "./buildCombinedPrompt";
+import { buildLightOnlyPrompt } from "./buildCombinedPrompt";
 import {
   generateImageWithGigaChat,
   GigaChatError,
 } from "./gigachatVisualize";
 import {
-  generateImageWithOpenAI,
+  enhanceLightWithOpenAI,
   OpenAiImageError,
   parseOpenAiError,
 } from "./openaiVisualize";
@@ -54,64 +56,91 @@ export interface VisualizePipelineOptions {
   logger?: PipelineLogger;
 }
 
+function syncSpecification(
+  spec: CalculationResult,
+  placement: PlacementScheme
+): CalculationResult {
+  const quantity = placement.fixtures.length;
+  const pricing = buildEquipmentPricing(spec.fixture, quantity);
+  return {
+    ...spec,
+    quantity,
+    totalPower: pricing.totalPowerW,
+    equipmentPrice: pricing.equipmentTotalRub,
+    totalPrice: pricing.equipmentTotalRub,
+  };
+}
+
 /**
- * 1) Локально: вечер + корпуса светильников на линиях (подсказка для AI).
- * 2) AI: редактирование кадра по полному промпту (товар, кол-во, вечер, 3000K).
- * 3) Fallback: локальный кадр, если AI недоступен.
+ * MVP v2:
+ * 1) Исходное фото
+ * 2) Корпуса на фасаде (видимые PNG)
+ * 3) Корпуса + локальный свет
+ * 4) AI enhance — только усиление света, без добавления светильников
  */
 export async function runVisualizationPipeline(
   options: VisualizePipelineOptions
 ): Promise<VisualizationResponse> {
   const logger = options.logger ?? new PipelineLogger();
   const log = logger.child("visualize");
+  const lightPrompt = buildLightOnlyPrompt();
+  const specification = syncSpecification(
+    options.specification,
+    options.placement
+  );
 
-  const promptInput: CombinedPromptInput = {
-    promptId: options.promptId,
-    fixtureId: options.fixture.id,
-    dimensions: options.dimensions,
-    analysis: options.analysis,
-    calculation: options.specification,
-  };
-  const combinedPrompt = buildCombinedPrompt(promptInput, "openai_edit");
-
-  log.log("start", "visualization pipeline", {
+  log.log("start", "MVP v2 visualization", {
     fixtureId: options.fixture.id,
     placements: options.placement.fixtures.length,
-    quantity: options.specification.quantity,
+    quantity: specification.quantity,
   });
 
-  const { dataUrl: localVisualization, report: localRenderReport } =
+  const { dataUrl: fixturesVisualization, report: bodiesReport } =
     await renderLocalVisualization(
       options.imageBuffer,
       options.placement,
       options.fixture,
       logger,
-      PREP_FOR_AI_DISPLAY_OPTIONS
+      MVP_BODIES_ONLY
     );
 
-  log.log("local-prep", "fixture prep for AI", {
-    pngComposited: localRenderReport.pngComposited,
-    fixtureFileExists: localRenderReport.fixtureFileExists,
+  const { dataUrl: fixturesWithLightVisualization, report: lightReport } =
+    await renderLocalVisualization(
+      options.imageBuffer,
+      options.placement,
+      options.fixture,
+      logger,
+      MVP_BODIES_AND_LIGHT
+    );
+
+  log.log("local-render", "bodies + light stages", {
+    bodiesPng: bodiesReport.pngComposited,
+    lightPng: lightReport.pngComposited,
   });
 
   const base: VisualizationResponse = {
     originalImage: options.imageDataUrl,
-    localVisualization,
+    fixturesVisualization,
+    fixturesWithLightVisualization,
+    localVisualization: fixturesWithLightVisualization,
     placementScheme: options.placement,
-    specification: options.specification,
+    specification,
     mode: "local",
-    lightPrompt: combinedPrompt,
-    localRenderReport,
+    lightPrompt,
+    localRenderReport: lightReport,
     pipelineLog: logger.snapshot(),
+    message:
+      "Корпуса NITEOS размещены на фасаде. Локальный свет 3000K.",
   };
+
+  if (!shouldAiEnhanceLight()) {
+    log.log("ai-skip", "AI_ENHANCE_LIGHT disabled — local render only", {}, "info");
+    return base;
+  }
 
   if (!isAiConfigured()) {
     log.log("ai-skip", "AI not configured", {}, "warn");
-    return {
-      ...base,
-      message:
-        "AI не настроен. Показана локальная визуализация с корпусами светильников.",
-    };
+    return base;
   }
 
   let provider: ActiveImageProvider;
@@ -121,69 +150,65 @@ export async function runVisualizationPipeline(
     log.log("ai-skip", "provider resolve failed", {
       error: e instanceof Error ? e.message : String(e),
     }, "warn");
-    return {
-      ...base,
-      message: "AI не настроен. Локальная визуализация с корпусами.",
-    };
+    return base;
   }
 
-  const prepDataUrl = localVisualization;
-  const prepBuffer = dataUrlToBuffer(localVisualization);
-
-  log.log("ai-start", "primary AI generation", { provider });
+  const prepBuffer = dataUrlToBuffer(fixturesWithLightVisualization);
+  log.log("ai-start", "light enhance only", { provider });
 
   try {
     if (provider === "gigachat") {
       const ai = await generateImageWithGigaChat(
         prepBuffer,
         "image/jpeg",
-        combinedPrompt
+        lightPrompt
       );
-      log.log("ai-done", "gigachat ok", { model: ai.modelUsed });
+      log.log("ai-done", "gigachat enhance ok", { model: ai.modelUsed });
       return {
         ...base,
         aiVisualization: ai.imageDataUrl,
         mode: "gigachat",
         provider: "gigachat",
-        message: `Сгенерировано GigaChat (${ai.modelUsed}): вечерняя подсветка с видимыми светильниками.`,
+        message: `Усиление света GigaChat (${ai.modelUsed}). Корпуса сохранены.`,
         pipelineLog: logger.snapshot(),
       };
     }
 
     if (provider === "yandex") {
       if (!getYandexFolderId() || shouldYandexKeepOriginalPhoto()) {
-        log.log("ai-skip", "yandex photo-only mode");
         return {
           ...base,
           mode: "yandex_photo",
           provider: "yandex",
-          message:
-            "Подсветка на вашем фото (локально). Для YandexART укажите YANDEX_FOLDER_ID.",
+          message: "Локальная визуализация (корпуса + свет).",
         };
       }
     }
 
-    const ai = await generateImageWithOpenAI(prepDataUrl, promptInput);
-    log.log("ai-done", "openai/gatellm ok");
+    const ai = await enhanceLightWithOpenAI(
+      fixturesWithLightVisualization,
+      prepBuffer
+    );
+    log.log("ai-done", "openai light enhance ok");
     return {
       ...base,
       aiVisualization: ai.imageDataUrl,
       mode: "openai",
       provider: "openai",
       message: usesChatCompletionsForImages()
-        ? `Фото обработано ${getOpenAiProxyLabel()}: вечер, тёплый свет 3000K, видимые светильники NITEOS.`
-        : "Фото обработано OpenAI: вечерняя архитектурная подсветка.",
+        ? `Свет усилен ${getOpenAiProxyLabel()}. Корпуса и геометрия фасада сохранены.`
+        : "Свет усилен OpenAI. Корпуса сохранены.",
       lightPrompt: ai.promptUsed,
       pipelineLog: logger.snapshot(),
     };
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
-    log.log("ai-error", "AI generation failed", { error: errMsg }, "warn");
+    log.log("ai-error", "light enhance failed", { error: errMsg }, "warn");
 
     if (shouldAllowLocalFallback()) {
       return {
         ...base,
-        message: `AI не сработал (${errMsg}). Локальная визуализация с корпусами светильников.`,
+        message: `AI не сработал (${errMsg}). Показаны корпуса и локальный свет.`,
         pipelineLog: logger.snapshot(),
       };
     }
@@ -222,7 +247,10 @@ export async function generateVisualization(
 }> {
   const result = await runVisualizationPipeline(options);
   return {
-    imageDataUrl: result.aiVisualization ?? result.localVisualization,
+    imageDataUrl:
+      result.aiVisualization ??
+      result.fixturesWithLightVisualization ??
+      result.localVisualization,
     promptUsed: result.lightPrompt ?? "",
     mode: (result.mode as VisualizeMode) ?? "local",
     provider: result.provider ?? "local",

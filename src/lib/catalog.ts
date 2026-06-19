@@ -1,7 +1,18 @@
 import catalogData from "../../data/catalog.json";
 import type { Fixture, LightingType } from "./types";
 
-export const CATALOG: Fixture[] = catalogData as Fixture[];
+function normalizeFixture(raw: Fixture): Fixture {
+  return {
+    ...raw,
+    frontImage: raw.frontImage ?? raw.image,
+    sideImage: raw.sideImage ?? raw.imageSide,
+    angleImage: raw.angleImage ?? raw.imageSide,
+    priceRub: raw.priceRub ?? raw.price,
+    powerW: raw.powerW ?? raw.power,
+  };
+}
+
+export const CATALOG: Fixture[] = (catalogData as Fixture[]).map(normalizeFixture);
 
 export function getCatalogSeries(): string[] {
   const series = new Set(CATALOG.map((f) => f.series).filter(Boolean) as string[]);

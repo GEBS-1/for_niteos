@@ -19,7 +19,7 @@ import { buildMockFacadeDetection } from "./mockFacadeDetection";
 import { placeFixturesAlongMountLines } from "./placementEngine";
 import { computePxPerMeter } from "./scale";
 import { PipelineLogger } from "./pipelineLog";
-import { STUB_UNIT_PRICE_RUB } from "./pricingStub";
+import { getFixturePowerW, getFixtureUnitPriceRub } from "./equipmentPricing";
 
 function resolveSelectedPrompt(params: AnalyzeRequest): UsagePrompt | undefined {
   if (!params.fixtureId && !params.promptId) return undefined;
@@ -42,7 +42,8 @@ function buildCalculationFromPlacement(
   zoneLengthM: number
 ): CalculationResult {
   const matchingFixtures = getFixturesForLightingType(lightingType);
-  const equipmentPrice = quantity * STUB_UNIT_PRICE_RUB;
+  const unitPrice = getFixtureUnitPriceRub(fixture);
+  const equipmentPrice = quantity * unitPrice;
   return {
     fixture,
     matchingFixtures,
@@ -50,7 +51,7 @@ function buildCalculationFromPlacement(
     mountTarget,
     zoneLengthM,
     quantity,
-    totalPower: quantity * fixture.power,
+    totalPower: quantity * getFixturePowerW(fixture),
     equipmentPrice,
     workPrice: 0,
     totalPrice: equipmentPrice,
