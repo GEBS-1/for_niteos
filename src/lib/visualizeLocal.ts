@@ -1,3 +1,4 @@
+import { knockOutStudioBackground } from "@/core/render/prepareAsset";
 import fs from "fs";
 import sharp from "sharp";
 import type { DisplayOptions } from "./displayOptions";
@@ -181,33 +182,6 @@ function clampTargetWidth(
   const scaled = Math.round(requested);
   const floor = bounds.floorPct > 0 ? Math.round(imageWidth * bounds.floorPct) : 0;
   return Math.max(bounds.min, Math.min(bounds.max, Math.max(scaled, floor)));
-}
-
-async function knockOutStudioBackground(input: Buffer): Promise<Buffer> {
-  const { data, info } = await sharp(input)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const pixels = data;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i];
-    const g = pixels[i + 1];
-    const b = pixels[i + 2];
-    const a = pixels[i + 3];
-    if (a === 0) continue;
-    const lum = (r + g + b) / 3;
-    const spread = Math.max(r, g, b) - Math.min(r, g, b);
-    if (lum >= 228 && spread <= 28) {
-      pixels[i + 3] = 0;
-    }
-  }
-
-  return sharp(pixels, {
-    raw: { width: info.width, height: info.height, channels: 4 },
-  })
-    .png()
-    .toBuffer();
 }
 
 async function loadFixtureRaster(

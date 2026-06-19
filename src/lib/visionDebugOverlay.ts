@@ -1,13 +1,9 @@
 import sharp from "sharp";
-import { getMountZoneKey } from "@/lib/mountRules";
-import { getFixturePlacementProfile } from "@/lib/fixturePlacementProfile";
-import { resolveAllowedMountLines } from "@/lib/mountZoneGeometry";
 import type {
   FacadeDetection,
   Fixture,
   LightingType,
   MountTarget,
-  MountZoneKey,
   PlacementScheme,
   ZoneBox,
 } from "./types";
@@ -42,12 +38,12 @@ export function buildVisionDebugSvg(
   width: number,
   height: number,
   detection: FacadeDetection,
-  placement: PlacementScheme,
-  zoneKey: MountZoneKey
+  placement: PlacementScheme
 ): string {
   const fb = detection.facadeBox;
   const forbidden = detection.forbiddenZones;
-  const allowed = resolveAllowedMountLines(detection, zoneKey);
+  /** Зелёные линии = selectedZones из ядра mounting (placement.mountLines) */
+  const selectedZones = placement.mountLines ?? [];
 
   const forbiddenRects = forbidden
     ? Object.values(forbidden)
@@ -58,7 +54,7 @@ export function buildVisionDebugSvg(
         .join("")
     : "";
 
-  const allowedLines = allowed
+  const allowedLines = selectedZones
     .map((ml) =>
       mountLineSvg(ml, width, height, "rgba(60,255,140,0.95)", 3)
     )
@@ -92,12 +88,7 @@ export async function renderVisionDebugOverlay(
   const meta = await sharp(imageBuffer).metadata();
   const width = meta.width ?? 1200;
   const height = meta.height ?? 800;
-  const zoneKey = getMountZoneKey(
-    fixture,
-    mountTarget,
-    getFixturePlacementProfile(fixture, lightingType)
-  );
-  const svg = buildVisionDebugSvg(width, height, detection, placement, zoneKey);
+  const svg = buildVisionDebugSvg(width, height, detection, placement);
   const overlay = await sharp(Buffer.from(svg), { density: 144 })
     .resize(width, height)
     .png()

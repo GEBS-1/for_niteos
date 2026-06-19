@@ -1,25 +1,32 @@
+import {
+  buildFacadeAnalysisLegacy,
+  calculateAllLightingTypes,
+  recommendLightingType,
+  validateDimensions,
+} from "@/lib/calculation";
+import { CATALOG } from "@/lib/catalog";
+import { normalizeFacadeDetection } from "@/lib/facadeGeometry";
+import { buildEquipmentPricing } from "@/lib/equipmentPricing";
+import { buildMockFacadeDetection } from "@/lib/mockFacadeDetection";
+import { placeFixturesAlongMountLines } from "@/lib/placementEngine";
+import { PipelineLogger } from "@/lib/pipelineLog";
+import { computePxPerMeter } from "@/lib/scale";
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
   CalculationResult,
-  FacadeAnalysis,
+  FacadeDetection,
   LightingType,
-  PipelineStages,
-  PlacementScheme,
+  MountTarget,
+  PipelineLogEntry,
   UsagePrompt,
-} from "./types";
-import { CATALOG, getFixturesForLightingType, LIGHTING_OPTIONS } from "./catalog";
-import {
-  buildFacadeAnalysisLegacy,
-  recommendLightingType,
-  validateDimensions,
-} from "./calculation";
-import { normalizeFacadeDetection } from "./facadeGeometry";
-import { buildMockFacadeDetection } from "./mockFacadeDetection";
-import { placeFixturesAlongMountLines } from "./placementEngine";
-import { computePxPerMeter } from "./scale";
-import { PipelineLogger } from "./pipelineLog";
-import { getFixturePowerW, getFixtureUnitPriceRub } from "./equipmentPricing";
+} from "@/lib/types";
+import type { Fixture } from "@/lib/types";
+
+export interface PipelineDetectionInput {
+  detection: FacadeDetection;
+  source: "ai" | "mock";
+}
 
 function resolveSelectedPrompt(params: AnalyzeRequest): UsagePrompt | undefined {
   if (!params.fixtureId && !params.promptId) return undefined;
@@ -33,122 +40,63 @@ function resolveSelectedPrompt(params: AnalyzeRequest): UsagePrompt | undefined 
   return inFixture ?? inCatalog ?? fixture?.usagePrompts[0];
 }
 
-function buildCalculationFromPlacement(
-  fixture: (typeof CATALOG)[0],
+function buildActiveCalculation(
+  fixture: Fixture,
   lightingType: LightingType,
-  mountTarget: UsagePrompt["mountTarget"],
+  mountTarget: MountTarget,
   selectedPrompt: UsagePrompt | undefined,
   quantity: number,
   zoneLengthM: number
 ): CalculationResult {
-  const matchingFixtures = getFixturesForLightingType(lightingType);
-  const unitPrice = getFixtureUnitPriceRub(fixture);
-  const equipmentPrice = quantity * unitPrice;
+  const pricing = buildEquipmentPricing(fixture, quantity);
+  const workPrice = Math.round(pricing.equipmentTotalRub * 0.3);
   return {
     fixture,
-    matchingFixtures,
+    matchingFixtures: [],
     lightingType,
     mountTarget,
     zoneLengthM,
-    quantity,
-    totalPower: quantity * getFixturePowerW(fixture),
-    equipmentPrice,
-    workPrice: 0,
-    totalPrice: equipmentPrice,
+    quantity: pricing.quantity,
+    totalPower: pricing.totalPowerW,
+    equipmentPrice: pricing.equipmentTotalRub,
+    workPrice,
+    totalPrice: pricing.equipmentTotalRub + workPrice,
     selectedPrompt,
   };
 }
 
-function enrichAnalysis(
-  base: FacadeAnalysis,
-  pipeline: PipelineStages,
-  detectionSource: "ai" | "mock"
-): FacadeAnalysis {
-  const mode: FacadeAnalysis["aiMode"] =
-    detectionSource === "ai" ? "ai" : "mock";
-  return {
-    ...base,
-    pixelsPerMeter: Math.round(pipeline.scale.pixelsPerMeter * 10) / 10,
-    facadeWidthM: pipeline.scale.anchor === "width"
-      ? pipeline.scale.userMeters
-      : base.facadeWidthM,
-    facadeHeightM: pipeline.scale.anchor === "height"
-      ? pipeline.scale.userMeters
-      : base.facadeHeightM,
-    facadeDetection: pipeline.detection,
-    scale: pipeline.scale,
-    aiMode: mode,
-    aiTasks: base.aiTasks.map((t) =>
-      t.task.includes("Детекция") || t.task.includes("Зоны монтажа")
-        ? {
-            ...t,
-            status: detectionSource === "ai" ? "done" : "mock",
-            detail:
-              detectionSource === "ai"
-                ? "Vision API: facadeBox и mountLines"
-                : t.detail,
-          }
-        : t.task.includes("масштаб")
-          ? {
-              ...t,
-              status: "done",
-              detail: `pxPerMeter=${pipeline.scale.pixelsPerMeter.toFixed(1)} по оси ${pipeline.scale.anchor}`,
-            }
-          : t
-    ),
-  };
-}
-
-export interface PipelineDetectionInput {
-  detection: import("./types").FacadeDetection;
-  source: "ai" | "mock";
-}
-
-/** Синхронный пайплайн (mock-детекция) — GitHub Pages и fallback */
+/**
+ * Синхронный расчёт: mock/готовая детекция → mounting → placement → спецификация.
+ */
 export function runAnalyzePipelineSync(
   params: AnalyzeRequest,
   detectionInput?: PipelineDetectionInput,
   logger?: PipelineLogger
 ): AnalyzeResponse {
   const log = logger ?? new PipelineLogger();
-  log.log("analyze", "pipeline start", {
-    imageWidth: params.imageWidth,
-    imageHeight: params.imageHeight,
-    dimensions: params.dimensions,
-    fixtureId: params.fixtureId,
-    hasImageDataUrl: Boolean(params.imageDataUrl),
-  });
-
   const dimError = validateDimensions(params.dimensions);
   if (dimError) throw new Error(dimError);
 
   const selectedPrompt = resolveSelectedPrompt(params);
+  const fixture =
+    (params.fixtureId
+      ? CATALOG.find((f) => f.id === params.fixtureId)
+      : undefined) ?? CATALOG[0];
   const lightingType =
     params.lightingType ??
     selectedPrompt?.lightingType ??
     recommendLightingType(
       buildFacadeAnalysisLegacy({ ...params, lightingType: undefined })
     );
-  const mountTarget = selectedPrompt?.mountTarget ?? "facade";
+  const mountTarget: MountTarget = selectedPrompt?.mountTarget ?? "facade";
 
-  const fixture =
-    (params.fixtureId
-      ? CATALOG.find((f) => f.id === params.fixtureId)
-      : undefined) ?? CATALOG[0];
-
-  const { detection, source } = detectionInput ?? {
-    detection: normalizeFacadeDetection(
+  const detection =
+    detectionInput?.detection ??
+    normalizeFacadeDetection(
       buildMockFacadeDetection(lightingType, mountTarget),
       { lightingType, mountTarget, fixture }
-    ),
-    source: "mock" as const,
-  };
-
-  log.log("detection", `source=${source}`, {
-    mountLines: detection.mountLines.length,
-    facadeBox: detection.facadeBox,
-    notes: detection.notes,
-  });
+    );
+  const detectionSource = detectionInput?.source ?? "mock";
 
   const scale = computePxPerMeter(
     params.dimensions,
@@ -156,8 +104,6 @@ export function runAnalyzePipelineSync(
     params.imageWidth,
     params.imageHeight
   );
-
-  log.log("scale", "pxPerMeter computed", { ...scale });
 
   const { placement, zoneLengthM } = placeFixturesAlongMountLines({
     detection,
@@ -170,93 +116,54 @@ export function runAnalyzePipelineSync(
     dimensions: params.dimensions,
   });
 
-  const quantity = placement.fixtures.length;
-  const samplePlacement = placement.fixtures.slice(0, 3).map((f) => ({
-    x: f.x,
-    y: f.y,
-    widthPx: f.widthPx,
-    heightPx: f.heightPx,
-  }));
-  log.log("placement", "fixtures placed", {
-    quantity,
-    zoneLengthM,
-    fixtureImage: fixture.image,
-    lengthMm: fixture.lengthMm,
-    samplePlacement,
-  });
-  const activeCalculation = buildCalculationFromPlacement(
+  const activeCalculation = buildActiveCalculation(
     fixture,
     lightingType,
     mountTarget,
     selectedPrompt,
-    quantity,
+    placement.fixtures.length,
     zoneLengthM
   );
 
-  const pipeline: PipelineStages = {
-    detection,
-    detectionSource: source,
-    scale,
-    placementCount: quantity,
-  };
-
-  const analysisBase = buildFacadeAnalysisLegacy({
+  const baseAnalysis = buildFacadeAnalysisLegacy({
     ...params,
     lightingType,
+    fixtureId: fixture.id,
+    promptId: selectedPrompt?.id,
   });
-  const analysis = enrichAnalysis(analysisBase, pipeline, source);
 
-  const calculations = {} as Record<LightingType, CalculationResult>;
-  for (const opt of LIGHTING_OPTIONS) {
-    const f =
-      CATALOG.find((x) => x.type.includes(opt.value)) ?? fixture;
-    const det = normalizeFacadeDetection(
-      buildMockFacadeDetection(opt.value, mountTarget),
-      { lightingType: opt.value, mountTarget, fixture: f }
-    );
-    const sc = computePxPerMeter(
-      params.dimensions,
-      det.facadeBox,
-      params.imageWidth,
-      params.imageHeight
-    );
-    const { placement: pl, zoneLengthM: zl } = placeFixturesAlongMountLines({
-      detection: det,
-      scale: sc,
-      fixture: f,
-      mountTarget,
-      lightingType: opt.value,
-      imageWidth: params.imageWidth,
-      imageHeight: params.imageHeight,
-      dimensions: params.dimensions,
-    });
-    calculations[opt.value] = buildCalculationFromPlacement(
-      f,
-      opt.value,
-      mountTarget,
-      undefined,
-      pl.fixtures.length,
-      zl
-    );
-  }
+  const calculations = calculateAllLightingTypes(
+    { ...params, lightingType, fixtureId: fixture.id, promptId: selectedPrompt?.id },
+    baseAnalysis
+  );
+  calculations[lightingType] = activeCalculation;
 
-  log.log("analyze", "pipeline done", {
-    quantity,
-    totalPrice: activeCalculation.totalPrice,
-    detectionSource: source,
+  log.log("placement", "mounting done", {
+    source: detectionSource,
+    mountLines: placement.mountLines?.length ?? 0,
+    fixtures: placement.fixtures.length,
+    zoneLengthM,
   });
 
   return {
-    analysis,
+    analysis: {
+      ...baseAnalysis,
+      facadeDetection: detection,
+      aiMode: detectionSource === "ai" ? "ai" : "mock",
+      pixelsPerMeter: Math.round(scale.pixelsPerMeter * 10) / 10,
+    },
     calculations,
-    recommendedLightingType: recommendLightingType(analysis),
+    recommendedLightingType: lightingType,
     placement,
     activeCalculation,
-    pipeline,
+    pipeline: {
+      detection,
+      detectionSource,
+      scale,
+      placementCount: placement.fixtures.length,
+    },
     pipelineLog: log.snapshot(),
   };
 }
 
-export function buildFullAnalyzeResult(params: AnalyzeRequest): AnalyzeResponse {
-  return runAnalyzePipelineSync(params);
-}
+export type { PipelineLogEntry };

@@ -37,13 +37,14 @@ function ResultImageCard({
   src: string | null;
   loading: boolean;
 }) {
+  const showSpinner = loading && !src;
   return (
     <div className="glass rounded-2xl p-3 overflow-hidden space-y-2">
       <div className="px-1">
         <p className="text-sm font-medium text-white">{title}</p>
         <p className="text-xs text-niteos-muted">{subtitle}</p>
       </div>
-      {loading ? (
+      {showSpinner ? (
         <div className="py-16 text-center text-sm text-niteos-muted">
           Рендер светильников…
         </div>
@@ -352,8 +353,22 @@ export default function HomePage() {
         response = data as AnalyzeResponse;
       }
       setResult(response);
-      setVisionDebugUrl(response.visionDebugImage ?? null);
+      setVisionDebugUrl(
+        response.visionDebugImage ??
+          response.engine?.debug?.sceneDebugImage ??
+          null
+      );
       setActiveCalculation(response.activeCalculation);
+
+      if (response.engine?.bodiesImage) {
+        setBodiesUrl(response.engine.bodiesImage);
+      }
+      if (response.engine?.localImage) {
+        setLightUrl(response.engine.localImage);
+      }
+      if (response.engine?.enhancedImage) {
+        setAiUrl(response.engine.enhancedImage);
+      }
 
       void trackLeadEvent("calculate", {
         fixtureId: response.activeCalculation.fixture.id,
@@ -366,7 +381,10 @@ export default function HomePage() {
         document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
       }, 100);
 
-      if (imageUrl && selectedPromptId && selectedFixtureId) {
+      if (response.engine?.bodiesImage && response.engine?.localImage) {
+        setBodiesUrl(response.engine.bodiesImage);
+        setLightUrl(response.engine.localImage);
+      } else if (imageUrl && selectedPromptId && selectedFixtureId) {
         setVisLoading(true);
         try {
           await fetchVisualization(
@@ -550,23 +568,23 @@ export default function HomePage() {
                 loading={false}
               />
               <ResultImageCard
-                title="Карта зон Vision"
-                subtitle="Красный — фасад и запреты · зелёный — разрешённые линии · жёлтый — точки монтажа"
+                title="2. Поверхности / debug"
+                subtitle="Красный — фасад и запреты · зелёный — поверхности · жёлтый — размещение"
                 src={visionDebugUrl}
-                loading={loading || visLoading}
+                loading={loading || (visLoading && !visionDebugUrl)}
               />
               <ResultImageCard
-                title="2. Размещение светильников"
-                subtitle="Видимые корпуса NITEOS на фасаде"
+                title="3. Локальный результат"
+                subtitle="PNG товара на фото + glow (без AI)"
                 src={bodiesUrl}
                 loading={visLoading}
               />
               <ResultImageCard
-                title="3. Подсветка"
+                title="4. Подсветка"
                 subtitle={
                   aiUrl
-                    ? "Корпуса + свет 3000K + AI-усиление"
-                    : "Корпуса + локальный свет 3000K"
+                    ? "Локальный рендер + AI Enhance"
+                    : "Локальный рендер + glow"
                 }
                 src={lightPreview}
                 loading={visLoading}
@@ -575,7 +593,7 @@ export default function HomePage() {
                 <div className="glass rounded-2xl p-5 flex flex-col justify-center space-y-4">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-niteos-muted mb-1">
-                      4. Спецификация
+                      Смета
                     </p>
                     <p className="text-lg font-semibold text-white">
                       {activeCalculation.fixture.name}

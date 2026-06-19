@@ -479,6 +479,20 @@ export interface PipelineStages {
 
 
 
+export interface EngineResponsePayload {
+  sceneAnalysis?: import("@/core/scene/types").SceneAnalysis;
+  placedItems?: import("@/core/products/types").PlacedItem[];
+  quote?: import("@/core/quote/buildQuote").Quote;
+  bodiesImage?: string;
+  localImage?: string;
+  enhancedImage?: string;
+  debug?: {
+    sceneDebugImage?: string;
+    pxPerMeter: number;
+    source: "ai" | "mock";
+  };
+}
+
 export interface AnalyzeResponse {
 
   analysis: FacadeAnalysis;
@@ -498,6 +512,9 @@ export interface AnalyzeResponse {
   /** Debug: карта зон Vision (красный/зелёный/жёлтый) */
 
   visionDebugImage?: string;
+
+  /** Visual Product Placement Engine payload */
+  engine?: EngineResponsePayload;
 
 }
 

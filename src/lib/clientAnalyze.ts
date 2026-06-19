@@ -1,7 +1,7 @@
 import { runAnalyzePipelineSync } from "@/lib/analyzePipeline";
 import type { AnalyzeRequest, AnalyzeResponse } from "@/lib/types";
 
-/** Расчёт на клиенте (GitHub Pages без сервера, mock-детекция) */
+/** Расчёт на клиенте (GitHub Pages без сервера, mock detection) */
 export function runClientAnalyze(body: AnalyzeRequest): AnalyzeResponse {
   return runAnalyzePipelineSync(body);
 }
